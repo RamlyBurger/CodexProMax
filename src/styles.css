@@ -471,28 +471,6 @@ button:disabled {
   border-top: 1px solid var(--border);
 }
 
-.profile-menu-error {
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
-  align-items: center;
-  gap: 10px;
-  margin-top: 8px;
-  padding: 8px;
-  border: 1px solid #fecdd3;
-  border-radius: 10px;
-  background: #fff1f2;
-  color: var(--danger);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.profile-menu-error img {
-  width: 34px;
-  height: 34px;
-  display: block;
-  object-fit: contain;
-}
-
 .left-sidebar.collapsed .sidebar-profile-area {
   padding: 10px 8px 12px;
 }
@@ -2272,6 +2250,50 @@ code,
 .confirm-button.primary:hover,
 .confirm-button.danger:hover {
   filter: brightness(0.96);
+}
+
+.logout-error-backdrop {
+  z-index: 125;
+}
+
+.logout-error-dialog {
+  width: min(360px, 100%);
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 22px 20px 18px;
+  border: 1px solid rgba(224, 239, 248, 0.95);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-lg);
+  text-align: center;
+}
+
+.logout-error-dialog img {
+  width: 72px;
+  height: 72px;
+  display: block;
+  object-fit: contain;
+}
+
+.logout-error-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.logout-error-copy h2 {
+  margin: 0;
+  color: var(--text-main);
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.logout-error-copy p {
+  max-width: 280px;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .document-preview-backdrop {

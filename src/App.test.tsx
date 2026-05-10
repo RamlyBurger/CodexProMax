@@ -268,13 +268,17 @@ describe('App', () => {
 
     fireEvent.click(logoutButton)
 
-    const logoutError = within(profileMenu).getByRole('alert')
-    expect(logoutError).toHaveTextContent('Unable to logout')
+    expect(screen.queryByRole('menu', { name: 'Profile menu' })).not.toBeInTheDocument()
+    const logoutError = screen.getByRole('dialog', { name: 'Unable to logout' })
     expect(within(logoutError).getByRole('img', { name: /unable to logout sticker/i })).toHaveAttribute(
       'src',
       'https://media.tenor.com/fTH4D95V-oQAAAAi/quby.gif',
     )
+    fireEvent.click(within(logoutError).getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('dialog', { name: 'Unable to logout' })).not.toBeInTheDocument()
 
+    fireEvent.click(profileButton)
+    expect(screen.getByRole('menu', { name: 'Profile menu' })).toBeInTheDocument()
     fireEvent.pointerDown(document.body)
     expect(screen.queryByRole('menu', { name: 'Profile menu' })).not.toBeInTheDocument()
 

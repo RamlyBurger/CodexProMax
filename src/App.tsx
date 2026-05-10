@@ -1146,6 +1146,7 @@ function RunInbox({
                     role="menuitem"
                     onClick={() => {
                       if (item.action === 'logout') {
+                        setProfileMenuOpen(false)
                         setProfileLogoutError(true)
                         return
                       }
@@ -1161,12 +1162,6 @@ function RunInbox({
                 ))}
               </div>
 
-              {profileLogoutError && (
-                <div className="profile-menu-error" role="alert">
-                  <img src={LOGOUT_ERROR_STICKER} alt="Unable to logout sticker" />
-                  <span>Unable to logout</span>
-                </div>
-              )}
             </div>
           )}
 
@@ -1198,7 +1193,33 @@ function RunInbox({
           </button>
         </div>
       </div>
+      {profileLogoutError && (
+        <LogoutErrorDialog onClose={() => setProfileLogoutError(false)} />
+      )}
     </aside>
+  )
+}
+
+function LogoutErrorDialog({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="preview-backdrop logout-error-backdrop" role="presentation" onClick={onClose}>
+      <section
+        className="logout-error-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Unable to logout"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <img src={LOGOUT_ERROR_STICKER} alt="Unable to logout sticker" />
+        <div className="logout-error-copy">
+          <h2>Unable to logout</h2>
+          <p>The current local profile cannot be signed out from this console.</p>
+        </div>
+        <button type="button" className="confirm-button primary" onClick={onClose}>
+          Close
+        </button>
+      </section>
+    </div>
   )
 }
 
