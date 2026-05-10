@@ -694,6 +694,13 @@ describe('App', () => {
     const dialog = await screen.findByRole('dialog', { name: 'output.md' })
     expect(within(dialog).getByText('## File Preview')).toBeInTheDocument()
     expect(within(dialog).getByText('Ready for preview.')).toBeInTheDocument()
+    expect(dialog.querySelector('.document-viewer')).toHaveClass('is-wrapped')
+    expect(dialog.querySelectorAll('.document-row')).toHaveLength(3)
+    expect(dialog.querySelector('.viewer-token.heading')).toHaveTextContent('## File Preview')
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /disable wrap/i }))
+
+    expect(dialog.querySelector('.document-viewer')).not.toHaveClass('is-wrapped')
   })
 
   it('opens right-sidebar attachments in the image preview', async () => {

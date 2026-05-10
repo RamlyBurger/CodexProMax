@@ -1745,7 +1745,7 @@ function ProtocolFilePreviewDialog({
   preview: ProtocolFilePreview
   onClose: () => void
 }) {
-  const [wrapContent, setWrapContent] = useState(false)
+  const [wrapContent, setWrapContent] = useState(true)
   const [copied, setCopied] = useState(false)
   const content = preview.content || ''
   const lines = content.replace(/\r\n/g, '\n').split('\n')
@@ -1843,14 +1843,14 @@ function ProtocolFilePreviewDialog({
               </div>
             )}
             <div className={`document-viewer language-${language} ${wrapContent ? 'is-wrapped' : ''}`}>
-              <div className="document-gutter" aria-hidden="true">
-                {lines.map((_, index) => (
-                  <span className="document-line-number" key={index}>
+              {lines.map((line, index) => (
+                <div className="document-row" key={index}>
+                  <span className="document-line-number">
                     {index + 1}
                   </span>
-                ))}
-              </div>
-              <pre className="document-code"><code>{highlightViewerContent(content, language)}</code></pre>
+                  <pre className="document-code"><code>{highlightViewerLine(line, language)}</code></pre>
+                </div>
+              ))}
             </div>
           </>
         )}
@@ -1959,16 +1959,6 @@ function detectViewerLanguage(title: string, content: string): 'json' | 'markdow
     return 'markdown'
   }
   return 'text'
-}
-
-function highlightViewerContent(content: string, language: 'json' | 'markdown' | 'text') {
-  const lines = content.replace(/\r\n/g, '\n').split('\n')
-  return lines.map((line, index) => (
-    <Fragment key={index}>
-      {highlightViewerLine(line, language)}
-      {index < lines.length - 1 ? '\n' : null}
-    </Fragment>
-  ))
 }
 
 function highlightViewerLine(line: string, language: 'json' | 'markdown' | 'text') {

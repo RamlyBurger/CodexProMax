@@ -1718,11 +1718,10 @@ code,
 .document-viewer {
   flex: 1 1 auto;
   min-height: 0;
-  display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
+  display: block;
   overflow: auto;
   border-top: 1px solid var(--border);
-  background: #f8fcff;
+  background: transparent;
   color: var(--text-main);
   font-family: var(--font-mono);
   font-size: 12px;
@@ -1730,38 +1729,62 @@ code,
   tab-size: 2;
 }
 
-.document-gutter {
-  position: sticky;
-  left: 0;
-  z-index: 1;
-  padding: 18px 0;
-  border-right: 1px solid var(--border);
-  background: #eff8ff;
-  color: var(--text-light);
-  user-select: none;
+.document-row {
+  min-width: max-content;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
 }
 
 .document-line-number {
+  position: sticky;
+  left: 0;
+  z-index: 1;
   display: block;
+  align-self: stretch;
   min-height: 1.65em;
   padding: 0 10px;
+  border-right: 1px solid var(--border);
+  background: #eff8ff;
+  color: var(--text-light);
   text-align: right;
+  user-select: none;
 }
 
 .document-code {
   min-width: max-content;
   margin: 0;
-  padding: 18px 20px;
+  padding: 0 20px;
+  background: transparent;
   color: var(--text-main);
   font: inherit;
   line-height: inherit;
   white-space: pre;
 }
 
+.document-row:first-child .document-line-number,
+.document-row:first-child .document-code {
+  padding-top: 18px;
+}
+
+.document-row:last-child .document-line-number,
+.document-row:last-child .document-code {
+  padding-bottom: 18px;
+}
+
+.document-viewer.is-wrapped .document-row {
+  min-width: 0;
+}
+
 .document-viewer.is-wrapped .document-code {
   min-width: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.viewer-token {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .viewer-token.property {
