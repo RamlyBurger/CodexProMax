@@ -3006,7 +3006,7 @@ function AttachmentPreview({
             </button>
           </div>
         </div>
-        <div className="preview-stage">
+        <div className={`preview-stage ${showGalleryControls ? 'has-gallery-controls' : ''}`}>
           {showGalleryControls && (
             <button
               type="button"
