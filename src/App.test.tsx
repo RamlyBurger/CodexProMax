@@ -270,6 +270,8 @@ describe('App', () => {
 
     expect(screen.queryByRole('menu', { name: 'Profile menu' })).not.toBeInTheDocument()
     const logoutError = screen.getByRole('dialog', { name: 'Unable to logout' })
+    expect(logoutError.closest('.left-sidebar')).toBeNull()
+    expect(logoutError.closest('.preview-backdrop')?.parentElement).toBe(document.body)
     expect(within(logoutError).getByRole('img', { name: /unable to logout sticker/i })).toHaveAttribute(
       'src',
       'https://media.tenor.com/fTH4D95V-oQAAAAi/quby.gif',

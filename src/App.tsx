@@ -15,6 +15,7 @@ import {
   type SyntheticEvent,
   type UIEvent,
 } from 'react'
+import { createPortal } from 'react-dom'
 import ReactMarkdown from 'react-markdown'
 import {
   clearConversationHistory as clearConversationHistoryRequest,
@@ -1417,8 +1418,9 @@ function RunInbox({
           </button>
         </div>
       </div>
-      {profileLogoutError && (
-        <LogoutErrorDialog onClose={() => setProfileLogoutError(false)} />
+      {profileLogoutError && createPortal(
+        <LogoutErrorDialog onClose={() => setProfileLogoutError(false)} />,
+        document.body,
       )}
     </aside>
   )
