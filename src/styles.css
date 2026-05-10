@@ -2011,7 +2011,7 @@ button:focus-visible,
   outline-offset: 2px;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 900px) {
   .app {
     display: grid;
     grid-template-columns: minmax(0, 1fr);

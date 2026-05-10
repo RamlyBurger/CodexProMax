@@ -378,6 +378,14 @@ describe('App', () => {
         expect(within(sidebar).getByRole('button', { name: /User request 3/i })).toHaveClass('active'),
       )
 
+      scrollPane.scrollTop = 600
+      mockElementRect(userBubble('User request 12'), { top: 520, bottom: 660 })
+      fireEvent.scroll(scrollPane)
+
+      await waitFor(() =>
+        expect(within(sidebar).getByRole('button', { name: /User request 12/i })).toHaveClass('active'),
+      )
+
       fireEvent.click(within(sidebar).getByRole('button', { name: /User request 12/i }))
 
       expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })

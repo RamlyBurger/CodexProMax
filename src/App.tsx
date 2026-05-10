@@ -595,6 +595,7 @@ function App() {
     }
 
     const scrollTop = scrollElement.scrollTop
+    const latestUserMessageId = userMessageOutlines[userMessageOutlines.length - 1]?.id ?? null
     const scrollDirection: ScrollDirection =
       scrollTop < lastChatScrollTopRef.current
         ? 'up'
@@ -602,6 +603,11 @@ function App() {
           ? 'down'
           : 'none'
     lastChatScrollTopRef.current = scrollTop
+    if (isScrolledNearBottom(scrollElement)) {
+      setActiveUserMessageId((currentId) => (currentId === latestUserMessageId ? currentId : latestUserMessageId))
+      return
+    }
+
     const scrollRect = scrollElement.getBoundingClientRect()
     let firstMeasuredId: string | null = null
 
