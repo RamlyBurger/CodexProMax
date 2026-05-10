@@ -284,6 +284,9 @@ function App() {
       const response = await submitInstruction(runId, { instruction: item.content })
       removeQueuedInstruction(runId, item.id)
       if (selectedRunIdRef.current === runId) {
+        chatPinnedToBottomRef.current = true
+        setChatAtBottom(true)
+        setChatBottomSyncVersion((version) => version + 1)
         setRunSnapshot(response.snapshot)
       }
     } catch (error) {
