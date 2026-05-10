@@ -54,6 +54,8 @@ const CHAT_BOTTOM_THRESHOLD_PX = 12
 const COMPOSER_TEXTAREA_MIN_HEIGHT_PX = 44
 const COMPOSER_TEXTAREA_MAX_HEIGHT_PX = 180
 const DEFAULT_COMPOSER_HEIGHT_PX = 120
+const CODEX_PROFILE_IMAGE = '/codex-color.png'
+const USER_PROFILE_IMAGE = '/burger.png'
 
 type PendingAction = 'send' | 'upload' | 'load' | 'clear' | 'stop'
 type MentionRange = { start: number; end: number; query: string }
@@ -533,9 +535,7 @@ function App() {
               <EmptyConversationHistory />
             ) : (
               <article className="message">
-                <div className="avatar" aria-hidden="true">
-                  <i className="ri-robot-2-fill" />
-                </div>
+                <ProfileAvatar type="bot" />
                 <div className="message-content">
                   <MarkdownPanel
                     markdown={pending === 'load' ? '' : runSnapshot?.outputMd ?? ''}
@@ -608,7 +608,7 @@ function RunInbox({
       <div className="sidebar-inner">
         <div className="brand-area">
           <div className="brand-icon" aria-hidden="true">
-            <i className="ri-shield-check-fill" />
+            <img src={CODEX_PROFILE_IMAGE} alt="" />
           </div>
           <div className="brand-text">Codex Pro Max</div>
         </div>
@@ -686,9 +686,7 @@ function ChatMessageItem({ message }: { message: ChatMessage }) {
   return (
     <article className={`message chat-message ${isUser ? 'user-message' : 'assistant-message'}`}>
       {!isUser && (
-        <div className="avatar" aria-hidden="true">
-          <i className="ri-robot-2-fill" />
-        </div>
+        <ProfileAvatar type="bot" />
       )}
 
       <div className="message-content">
@@ -718,9 +716,7 @@ function ChatMessageItem({ message }: { message: ChatMessage }) {
       </div>
 
       {isUser && (
-        <div className="avatar user-avatar" aria-hidden="true">
-          <i className="ri-user-3-fill" />
-        </div>
+        <ProfileAvatar type="user" />
       )}
     </article>
   )
@@ -733,9 +729,7 @@ function AiLoadingMessage() {
       aria-label="Codex is working"
       data-testid="ai-loading-indicator"
     >
-      <div className="avatar" aria-hidden="true">
-        <i className="ri-robot-2-fill" />
-      </div>
+      <ProfileAvatar type="bot" />
       <div className="message-content">
         <div className="ai-loading-bubble" aria-hidden="true">
           <span />
@@ -744,6 +738,17 @@ function AiLoadingMessage() {
         </div>
       </div>
     </article>
+  )
+}
+
+function ProfileAvatar({ type }: { type: 'bot' | 'user' }) {
+  const src = type === 'bot' ? CODEX_PROFILE_IMAGE : USER_PROFILE_IMAGE
+  const label = type === 'bot' ? 'Codex' : 'You'
+
+  return (
+    <div className={`avatar profile-avatar ${type === 'user' ? 'user-avatar' : 'bot-avatar'}`} aria-hidden="true">
+      <img src={src} alt={label} />
+    </div>
   )
 }
 
