@@ -704,6 +704,45 @@ describe('App', () => {
     expect(within(queuedMessages).getByText('First queued instruction edited.')).toBeInTheDocument()
   })
 
+  it('preserves queued messages across a page refresh', async () => {
+    const manager = managerFactory()
+    manager.runs[0] = {
+      ...manager.runs[0],
+      status: 'RUNNING',
+      owner: 'agent',
+    }
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse(manager))
+      .mockResolvedValueOnce(jsonResponse(snapshotFactory({ status: 'RUNNING' })))
+
+    const { unmount } = render(<App />)
+    await getEventSource()
+
+    const input = await screen.findByLabelText('Instruction')
+    fireEvent.change(input, {
+      target: { value: 'Persist this queued instruction.' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /queue for review/i }))
+
+    expect(await screen.findByLabelText('Queued messages')).toHaveTextContent('Persist this queued instruction.')
+    await waitFor(() =>
+      expect(window.localStorage.getItem('codex-pro-max:queued-instructions:v1')).toContain(
+        'Persist this queued instruction.',
+      ),
+    )
+
+    unmount()
+    MockEventSource.instances = []
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse(manager))
+      .mockResolvedValueOnce(jsonResponse(snapshotFactory({ status: 'RUNNING' })))
+
+    render(<App />)
+    await getEventSource()
+
+    expect(await screen.findByLabelText('Queued messages')).toHaveTextContent('Persist this queued instruction.')
+  })
+
   it('automatically sends the next queued message when the run returns to review', async () => {
     const fetchMock = vi.mocked(fetch)
     const runningManager = managerFactory()
@@ -749,6 +788,57 @@ describe('App', () => {
       ),
     )
     await waitFor(() => expect(screen.queryByLabelText('Queued messages')).not.toBeInTheDocument())
+  })
+
+  it('sends queued messages for a non-selected run in the background', async () => {
+    const fetchMock = vi.mocked(fetch)
+    const runningManager = managerFactory()
+    runningManager.runs[0] = {
+      ...runningManager.runs[0],
+      status: 'RUNNING',
+      owner: 'agent',
+    }
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse(runningManager))
+      .mockResolvedValueOnce(jsonResponse(snapshotFactory({ status: 'RUNNING' })))
+
+    render(<App />)
+    const events = await getEventSource()
+
+    const input = await screen.findByLabelText('Instruction')
+    fireEvent.change(input, {
+      target: { value: 'Run A queued while I inspect another run.' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /queue for review/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Run B/i }))
+
+    expect(await screen.findByRole('heading', { name: 'Draft B' })).toBeInTheDocument()
+
+    const reviewManager = managerFactory({
+      selectedRunId: 'run-b',
+      health: {
+        rootExists: true,
+        watcherReady: true,
+        serverTimeIso: '2026-05-07T00:00:06.000Z',
+      },
+    })
+
+    act(() => {
+      events.emitSnapshot(reviewManager)
+    })
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/runs/run-a/action',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            instruction: 'Run A queued while I inspect another run.',
+          }),
+        }),
+      ),
+    )
+    expect(screen.queryByLabelText('Queued messages')).not.toBeInTheDocument()
   })
 
   it('clears conversation history without deleting the selected run', async () => {

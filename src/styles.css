@@ -1585,7 +1585,6 @@ code,
 
 .queued-instruction p {
   min-width: 0;
-  max-height: 44px;
   overflow: hidden;
   margin: 0;
   color: var(--text-main);
@@ -1593,7 +1592,8 @@ code,
   font-weight: 650;
   line-height: 1.45;
   overflow-wrap: anywhere;
-  white-space: pre-wrap;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .queued-instruction-actions {

@@ -83,6 +83,7 @@ const RIGHT_SIDEBAR_COLLAPSED_STORAGE_KEY = 'codex-pro-max:right-sidebar-collaps
 const OUTLINES_COLLAPSED_STORAGE_KEY = 'codex-pro-max:right-sidebar-outlines-collapsed'
 const PROTOCOL_FILES_COLLAPSED_STORAGE_KEY = 'codex-pro-max:right-sidebar-protocol-files-collapsed:v2'
 const ATTACHMENTS_COLLAPSED_STORAGE_KEY = 'codex-pro-max:right-sidebar-attachments-collapsed'
+const QUEUED_INSTRUCTIONS_STORAGE_KEY = 'codex-pro-max:queued-instructions:v1'
 
 type PendingAction = 'send' | 'upload' | 'load' | 'clear' | 'stop'
 type MentionRange = { start: number; end: number; query: string }
@@ -92,6 +93,8 @@ type QueuedInstruction = {
   id: string
   content: string
 }
+type QueuedInstructionsByRun = Record<string, QueuedInstruction[]>
+type QueuedInstructionIdsByRun = Record<string, string>
 type ConfirmDialogTone = 'default' | 'danger'
 type ConfirmDialogOptions = {
   title: string
@@ -117,10 +120,12 @@ function App() {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [runSnapshot, setRunSnapshot] = useState<Snapshot | null>(null)
   const [instruction, setInstruction] = useState('')
-  const [queuedInstructionsByRun, setQueuedInstructionsByRun] = useState<Record<string, QueuedInstruction[]>>({})
+  const [queuedInstructionsByRun, setQueuedInstructionsByRun] = useState<QueuedInstructionsByRun>(() =>
+    readStoredQueuedInstructions(),
+  )
   const [draftAttachmentNames, setDraftAttachmentNames] = useState<string[]>([])
   const [pending, setPending] = useState<PendingAction | null>(null)
-  const [autoSendingQueuedInstructionId, setAutoSendingQueuedInstructionId] = useState<string | null>(null)
+  const [autoSendingQueuedInstructionIds, setAutoSendingQueuedInstructionIds] = useState<QueuedInstructionIdsByRun>({})
   const [deletingRunId, setDeletingRunId] = useState<string | null>(null)
   const [deletingAttachmentNames, setDeletingAttachmentNames] = useState<string[]>([])
   const [actionError, setActionError] = useState<string | null>(null)
@@ -138,6 +143,7 @@ function App() {
   const [previewAttachment, setPreviewAttachment] = useState<AttachmentMeta | null>(null)
   const [previewProtocolFile, setPreviewProtocolFile] = useState<ProtocolFilePreview | null>(null)
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
+  const selectedRunIdRef = useRef<string | null>(null)
   const chatPinnedToBottomRef = useRef(true)
   const lastChatScrollTopRef = useRef(0)
   const activeMessageFrameRef = useRef<number | null>(null)
@@ -145,8 +151,8 @@ function App() {
   const smoothScrollReleaseTimerRef = useRef<number | null>(null)
   const userMessageRefs = useRef(new Map<string, HTMLElement>())
   const queuedInstructionIdRef = useRef(0)
-  const queuedSendInFlightRef = useRef<{ runId: string; itemId: string } | null>(null)
-  const blockedQueuedSendRef = useRef<{ runId: string; itemId: string } | null>(null)
+  const queuedSendInFlightRef = useRef<QueuedInstructionIdsByRun>({})
+  const blockedQueuedSendRef = useRef<QueuedInstructionIdsByRun>({})
   const composerFocusTokenRef = useRef(0)
   const [composerFocusToken, setComposerFocusToken] = useState(0)
 
@@ -169,6 +175,14 @@ function App() {
 
   const runs = managerSnapshot?.runs ?? []
   const selectedRun = runs.find((run) => run.runId === selectedRunId) ?? null
+
+  useEffect(() => {
+    selectedRunIdRef.current = selectedRunId
+  }, [selectedRunId])
+
+  useEffect(() => {
+    writeStoredQueuedInstructions(queuedInstructionsByRun)
+  }, [queuedInstructionsByRun])
 
   useEffect(() => {
     if (!managerSnapshot) {
@@ -233,26 +247,65 @@ function App() {
   async function submitInstructionText(
     runId: string,
     content: string,
-    options: { clearComposer: boolean; queuedInstructionId?: string },
+    options: { clearComposer: boolean },
   ) {
     setPending('send')
     setActionError(null)
 
     try {
       const response = await submitInstruction(runId, { instruction: content })
-      setRunSnapshot(response.snapshot)
+      if (selectedRunIdRef.current === runId) {
+        setRunSnapshot(response.snapshot)
+      }
       if (options.clearComposer) {
         setInstruction('')
         setDraftAttachmentNames([])
-      }
-      if (options.queuedInstructionId) {
-        removeQueuedInstruction(runId, options.queuedInstructionId)
       }
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Action failed')
       throw error
     } finally {
       setPending(null)
+    }
+  }
+
+  async function submitQueuedInstruction(runId: string, item: QueuedInstruction) {
+    queuedSendInFlightRef.current = {
+      ...queuedSendInFlightRef.current,
+      [runId]: item.id,
+    }
+    setAutoSendingQueuedInstructionIds((itemsByRun) => ({
+      ...itemsByRun,
+      [runId]: item.id,
+    }))
+
+    try {
+      const response = await submitInstruction(runId, { instruction: item.content })
+      removeQueuedInstruction(runId, item.id)
+      if (selectedRunIdRef.current === runId) {
+        setRunSnapshot(response.snapshot)
+      }
+    } catch (error) {
+      blockedQueuedSendRef.current = {
+        ...blockedQueuedSendRef.current,
+        [runId]: item.id,
+      }
+      if (selectedRunIdRef.current === runId) {
+        setActionError(error instanceof Error ? error.message : 'Queued instruction failed')
+      }
+    } finally {
+      const nextInFlight = { ...queuedSendInFlightRef.current }
+      delete nextInFlight[runId]
+      queuedSendInFlightRef.current = nextInFlight
+      setAutoSendingQueuedInstructionIds((itemsByRun) => {
+        if (itemsByRun[runId] !== item.id) {
+          return itemsByRun
+        }
+
+        const nextItemsByRun = { ...itemsByRun }
+        delete nextItemsByRun[runId]
+        return nextItemsByRun
+      })
     }
   }
 
@@ -556,11 +609,11 @@ function App() {
   function shouldQueueInstruction() {
     return status !== 'WAITING_FOR_REVIEW'
       || selectedQueuedInstructions.length > 0
-      || queuedSendInFlightRef.current !== null
+      || (selectedRunId !== null && Boolean(queuedSendInFlightRef.current[selectedRunId]))
   }
 
   function handleQueuedInstructionEdit(item: QueuedInstruction) {
-    if (!selectedRunId || item.id === autoSendingQueuedInstructionId) {
+    if (!selectedRunId || item.id === selectedAutoSendingQueuedInstructionId) {
       return
     }
 
@@ -573,7 +626,7 @@ function App() {
   }
 
   function handleQueuedInstructionDelete(item: QueuedInstruction) {
-    if (!selectedRunId || item.id === autoSendingQueuedInstructionId) {
+    if (!selectedRunId || item.id === selectedAutoSendingQueuedInstructionId) {
       return
     }
 
@@ -710,6 +763,8 @@ function App() {
     () => (selectedRunId ? queuedInstructionsByRun[selectedRunId] ?? [] : []),
     [queuedInstructionsByRun, selectedRunId],
   )
+  const selectedAutoSendingQueuedInstructionId =
+    selectedRunId ? autoSendingQueuedInstructionIds[selectedRunId] ?? null : null
   const attachments = useMemo(() => runSnapshot?.attachments ?? [], [runSnapshot?.attachments])
   const draftAttachments = useMemo(
     () => attachments.filter((attachment) => draftAttachmentNames.includes(attachment.name)),
@@ -774,56 +829,35 @@ function App() {
   }, [attachments])
 
   useEffect(() => {
-    if (status !== 'WAITING_FOR_REVIEW') {
-      blockedQueuedSendRef.current = null
-    }
-  }, [selectedRunId, status])
-
-  useEffect(() => {
-    if (!selectedRunId || status !== 'WAITING_FOR_REVIEW' || pending) {
+    if (!managerSnapshot) {
       return
     }
 
-    const nextQueuedInstruction = selectedQueuedInstructions[0]
-    if (!nextQueuedInstruction) {
-      return
-    }
-
-    const inFlight = queuedSendInFlightRef.current
-    if (
-      (inFlight?.runId === selectedRunId && inFlight.itemId === nextQueuedInstruction.id)
-      || (blockedQueuedSendRef.current?.runId === selectedRunId
-        && blockedQueuedSendRef.current.itemId === nextQueuedInstruction.id)
-    ) {
-      return
-    }
-
-    queuedSendInFlightRef.current = {
-      runId: selectedRunId,
-      itemId: nextQueuedInstruction.id,
-    }
-    setAutoSendingQueuedInstructionId(nextQueuedInstruction.id)
-
-    void submitInstructionText(selectedRunId, nextQueuedInstruction.content, {
-      clearComposer: false,
-      queuedInstructionId: nextQueuedInstruction.id,
-    }).catch(() => {
-      blockedQueuedSendRef.current = {
-        runId: selectedRunId,
-        itemId: nextQueuedInstruction.id,
+    for (const run of managerSnapshot.runs) {
+      const runStatus = run.runId === selectedRunId ? status : run.status
+      if (runStatus !== 'WAITING_FOR_REVIEW') {
+        if (blockedQueuedSendRef.current[run.runId]) {
+          const nextBlockedItems = { ...blockedQueuedSendRef.current }
+          delete nextBlockedItems[run.runId]
+          blockedQueuedSendRef.current = nextBlockedItems
+        }
+        continue
       }
-    }).finally(() => {
-      if (
-        queuedSendInFlightRef.current?.runId === selectedRunId
-        && queuedSendInFlightRef.current.itemId === nextQueuedInstruction.id
-      ) {
-        queuedSendInFlightRef.current = null
+
+      const nextQueuedInstruction = queuedInstructionsByRun[run.runId]?.[0]
+      if (!nextQueuedInstruction) {
+        continue
       }
-      setAutoSendingQueuedInstructionId((currentId) =>
-        currentId === nextQueuedInstruction.id ? null : currentId,
-      )
-    })
-  }, [pending, selectedQueuedInstructions, selectedRunId, status])
+
+      const inFlightItemId = queuedSendInFlightRef.current[run.runId]
+      const blockedItemId = blockedQueuedSendRef.current[run.runId]
+      if (inFlightItemId === nextQueuedInstruction.id || blockedItemId === nextQueuedInstruction.id) {
+        continue
+      }
+
+      void submitQueuedInstruction(run.runId, nextQueuedInstruction)
+    }
+  }, [managerSnapshot, queuedInstructionsByRun, selectedRunId, status])
 
   const busy = Boolean(pending)
   const canSendInstruction =
@@ -835,7 +869,7 @@ function App() {
     Boolean(selectedRunId)
     && (status !== 'WAITING_FOR_REVIEW'
       || selectedQueuedInstructions.length > 0
-      || queuedSendInFlightRef.current !== null)
+      || (selectedRunId !== null && Boolean(queuedSendInFlightRef.current[selectedRunId])))
   const selectedTitle = selectedRun?.displayName ?? runSnapshot?.displayName ?? 'No run selected'
   const draggingAttachment = attachmentDragDepth > 0
 
@@ -1166,7 +1200,7 @@ function App() {
           canSend={canSendInstruction}
           queueing={queueingCurrentInstruction}
           queuedInstructions={selectedQueuedInstructions}
-          autoSendingQueuedInstructionId={autoSendingQueuedInstructionId}
+          autoSendingQueuedInstructionId={selectedAutoSendingQueuedInstructionId}
           composerFocusToken={composerFocusToken}
           onSend={() => void sendInstruction()}
           onQueuedInstructionEdit={handleQueuedInstructionEdit}
@@ -2164,6 +2198,60 @@ function writeStoredBoolean(key: string, value: boolean) {
   } catch {
     // Ignore storage failures so browser privacy settings do not break the UI.
   }
+}
+
+function readStoredQueuedInstructions(): QueuedInstructionsByRun {
+  try {
+    const stored = window.localStorage.getItem(QUEUED_INSTRUCTIONS_STORAGE_KEY)
+    if (!stored) {
+      return {}
+    }
+
+    return parseQueuedInstructionsByRun(JSON.parse(stored) as unknown)
+  } catch {
+    return {}
+  }
+}
+
+function writeStoredQueuedInstructions(queues: QueuedInstructionsByRun) {
+  try {
+    const entries = Object.entries(queues).filter(([, items]) => items.length > 0)
+    if (entries.length === 0) {
+      window.localStorage.removeItem(QUEUED_INSTRUCTIONS_STORAGE_KEY)
+      return
+    }
+
+    window.localStorage.setItem(QUEUED_INSTRUCTIONS_STORAGE_KEY, JSON.stringify(Object.fromEntries(entries)))
+  } catch {
+    // Ignore storage failures so queued draft state never blocks the UI.
+  }
+}
+
+function parseQueuedInstructionsByRun(value: unknown): QueuedInstructionsByRun {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {}
+  }
+
+  const parsedQueues: QueuedInstructionsByRun = {}
+  for (const [runId, items] of Object.entries(value)) {
+    if (!Array.isArray(items)) {
+      continue
+    }
+
+    const parsedItems = items.filter(isQueuedInstruction)
+    if (parsedItems.length > 0) {
+      parsedQueues[runId] = parsedItems
+    }
+  }
+
+  return parsedQueues
+}
+
+function isQueuedInstruction(value: unknown): value is QueuedInstruction {
+  return Boolean(value)
+    && typeof value === 'object'
+    && typeof (value as QueuedInstruction).id === 'string'
+    && typeof (value as QueuedInstruction).content === 'string'
 }
 
 function addUniqueNames(currentNames: string[], nextNames: string[]): string[] {
