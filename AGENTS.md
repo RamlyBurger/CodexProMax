@@ -12,8 +12,7 @@ When HITL is active:
 - Continue unless `consume_instruction.ps1` returns `shouldFinish=true`.
 - Read `session.md` if prior conclusions or user instructions matter.
 
-Use `-MaxSeconds` only for explicit diagnostics or user-requested status updates, not for the default review loop.
-If the wait command is interrupted, times out, or exits unexpectedly, check `<run-dir>/status.txt`; consume the instruction when it is `INSTRUCTION_RECEIVED`, otherwise resume the exact-run wait. Do not treat an interrupted wait as completion.
+The wait script is intentionally blocking and non-stop. If the wait command is interrupted or exits unexpectedly, check `<run-dir>/status.txt`; consume the instruction when it is `INSTRUCTION_RECEIVED`, otherwise resume the exact-run wait. Do not treat an interrupted wait as completion.
 
 Normal statuses are `RUNNING`, `WAITING_FOR_REVIEW`, and `INSTRUCTION_RECEIVED`.
 

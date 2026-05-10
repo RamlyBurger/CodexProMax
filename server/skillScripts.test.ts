@@ -78,7 +78,7 @@ describe('Codex Pro Max wait script', () => {
     expect(started.output.stdout).toContain('STATUS_CHANGED: INSTRUCTION_RECEIVED')
   })
 
-  it('supports explicit bounded waits for a run directory', async () => {
+  it('supports explicit non-stop waits for a run directory', async () => {
     const root = await createTempRoot()
     const runDir = path.join(root, 'runs', 'target-run')
     await mkdir(runDir, { recursive: true })
@@ -88,14 +88,24 @@ describe('Codex Pro Max wait script', () => {
       {
         CODEX_PRO_MAX_POLL_SECONDS: '1',
       },
-      ['-RunDir', runDir, '-MaxSeconds', '1'],
+      ['-RunDir', runDir],
     )
 
-    const result = await waitForExit(started, 4_000)
+    let exited = false
+    const exitPromise = waitForExit(started, 6_000).then((result) => {
+      exited = true
+      return result
+    })
+
+    await delay(1_200)
+    expect(exited).toBe(false)
+
+    await writeFile(path.join(runDir, 'status.txt'), 'INSTRUCTION_RECEIVED')
+    const result = await exitPromise
 
     expect(result.code).toBe(0)
     expect(started.output.stdout).toContain(path.join(runDir, 'status.txt'))
-    expect(started.output.stdout).toContain('STILL_WAITING: WAITING_FOR_REVIEW')
+    expect(started.output.stdout).toContain('STATUS_CHANGED: INSTRUCTION_RECEIVED')
   })
 
   it('installer writes portable global instructions and skill scripts', async () => {

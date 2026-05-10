@@ -81,8 +81,7 @@ When HITL is active:
 4. Consume the next human instruction with `consume_instruction.ps1 -RunDir "<run-dir>"`.
 5. Continue unless the returned JSON has `shouldFinish=true`.
 
-Use `-MaxSeconds` only for explicit diagnostics or user-requested status updates, not for the default review loop.
-If the wait command is interrupted, times out, or exits unexpectedly, check `<run-dir>/status.txt`; consume the instruction when it is `INSTRUCTION_RECEIVED`, otherwise resume the exact-run wait. Do not treat an interrupted wait as completion.
+The wait script is intentionally blocking and non-stop. If the wait command is interrupted or exits unexpectedly, check `<run-dir>/status.txt`; consume the instruction when it is `INSTRUCTION_RECEIVED`, otherwise resume the exact-run wait. Do not treat an interrupted wait as completion.
 
 Use `session.md` when prior conclusions or user instructions matter.
 
@@ -130,8 +129,7 @@ Use `CODEX_PRO_MAX_RUN_DIR` when set. Otherwise use `<manager-root>/runs/<CODEX_
 5. If `shouldFinish=true`, send the final chat response. Otherwise execute `instruction` and repeat.
 
 Do not stop unless `consume_instruction.ps1` returns `shouldFinish=true`.
-Use `-MaxSeconds` only for explicit diagnostics or user-requested status updates, not for the default review loop.
-If a wait command is interrupted, times out, or exits unexpectedly, immediately check `<run-dir>/status.txt`; consume the instruction when it is `INSTRUCTION_RECEIVED`, otherwise resume the exact-run wait. Do not treat an interrupted wait as completion.
+The wait script is intentionally blocking and non-stop. If a wait command is interrupted or exits unexpectedly, immediately check `<run-dir>/status.txt`; consume the instruction when it is `INSTRUCTION_RECEIVED`, otherwise resume the exact-run wait. Do not treat an interrupted wait as completion.
 
 ## Files
 
