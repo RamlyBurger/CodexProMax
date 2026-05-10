@@ -2,6 +2,7 @@ import {
   useEffect,
   Fragment,
   useLayoutEffect,
+  memo,
   useMemo,
   useRef,
   useState,
@@ -111,6 +112,8 @@ function App() {
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
   const chatPinnedToBottomRef = useRef(true)
   const lastChatScrollTopRef = useRef(0)
+  const activeMessageFrameRef = useRef<number | null>(null)
+  const activeMessageScrollElementRef = useRef<HTMLDivElement | null>(null)
   const userMessageRefs = useRef(new Map<string, HTMLElement>())
 
   const runs = managerSnapshot?.runs ?? []
@@ -166,6 +169,14 @@ function App() {
   useEffect(() => {
     writeStoredBoolean(RIGHT_SIDEBAR_COLLAPSED_STORAGE_KEY, rightCollapsed)
   }, [rightCollapsed])
+
+  useEffect(() => {
+    return () => {
+      if (activeMessageFrameRef.current !== null) {
+        window.cancelAnimationFrame(activeMessageFrameRef.current)
+      }
+    }
+  }, [])
 
   async function sendInstruction() {
     if (!selectedRunId) {
@@ -438,7 +449,7 @@ function App() {
     const atBottom = isScrolledNearBottom(event.currentTarget)
     chatPinnedToBottomRef.current = atBottom
     setChatAtBottom(atBottom)
-    updateActiveUserMessage(event.currentTarget)
+    scheduleActiveUserMessageUpdate(event.currentTarget)
   }
 
   async function handleDeleteRun(run: RunSummary) {
@@ -565,6 +576,18 @@ function App() {
     target.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
+  function scheduleActiveUserMessageUpdate(scrollElement: HTMLDivElement) {
+    activeMessageScrollElementRef.current = scrollElement
+    if (activeMessageFrameRef.current !== null) {
+      return
+    }
+
+    activeMessageFrameRef.current = window.requestAnimationFrame(() => {
+      activeMessageFrameRef.current = null
+      updateActiveUserMessage(activeMessageScrollElementRef.current)
+    })
+  }
+
   function updateActiveUserMessage(scrollElement = chatScrollRef.current) {
     if (!scrollElement || userMessageOutlines.length === 0) {
       setActiveUserMessageId(null)
@@ -580,25 +603,40 @@ function App() {
           : 'none'
     lastChatScrollTopRef.current = scrollTop
     const scrollRect = scrollElement.getBoundingClientRect()
-    const bubblePositions = userMessageOutlines.flatMap((message) => {
-      const element = userMessageRefs.current.get(message.id)
-      return element ? [{ id: message.id, top: element.getBoundingClientRect().top }] : []
-    })
-
-    if (bubblePositions.length === 0) {
-      setActiveUserMessageId(null)
-      return
-    }
+    let firstMeasuredId: string | null = null
 
     if (scrollDirection === 'up') {
       const topZoneStartY = scrollRect.top - USER_BUBBLE_TOP_TOLERANCE_PX
       const topZoneEndY = scrollRect.top + USER_BUBBLE_TOP_ZONE_PX
-      const topZoneMessages = bubblePositions.filter(
-        (message) => message.top >= topZoneStartY && message.top <= topZoneEndY,
-      )
-      const topZoneMessage = topZoneMessages[topZoneMessages.length - 1]
+      let topZoneMessageId: string | null = null
+
+      for (const message of userMessageOutlines) {
+        const element = userMessageRefs.current.get(message.id)
+        if (!element) {
+          continue
+        }
+
+        firstMeasuredId ??= message.id
+        const messageTop = element.getBoundingClientRect().top
+        if (messageTop < topZoneStartY) {
+          continue
+        }
+
+        if (messageTop <= topZoneEndY) {
+          topZoneMessageId = message.id
+          continue
+        }
+
+        break
+      }
+
+      if (!firstMeasuredId) {
+        setActiveUserMessageId(null)
+        return
+      }
+
       setActiveUserMessageId((currentId) => {
-        const nextActiveId = topZoneMessage?.id ?? currentId ?? bubblePositions[0].id
+        const nextActiveId = topZoneMessageId ?? currentId ?? firstMeasuredId
         return currentId === nextActiveId ? currentId : nextActiveId
       })
       return
@@ -606,16 +644,28 @@ function App() {
 
     const activationOffset = Math.min(Math.max(scrollElement.clientHeight * 0.55, 96), 260)
     const activeThresholdY = scrollRect.top + activationOffset
-    let nextActiveId = bubblePositions[0].id
+    let nextActiveId: string | null = null
 
-    for (const message of bubblePositions) {
-      if (message.top <= activeThresholdY) {
+    for (const message of userMessageOutlines) {
+      const element = userMessageRefs.current.get(message.id)
+      if (!element) {
+        continue
+      }
+
+      firstMeasuredId ??= message.id
+      if (element.getBoundingClientRect().top <= activeThresholdY) {
         nextActiveId = message.id
       } else {
         break
       }
     }
 
+    if (!firstMeasuredId) {
+      setActiveUserMessageId(null)
+      return
+    }
+
+    nextActiveId ??= firstMeasuredId
     setActiveUserMessageId((currentId) => (currentId === nextActiveId ? currentId : nextActiveId))
   }
 
@@ -943,7 +993,7 @@ function RunStatusIcon({ status }: { status: ProtocolStatus }) {
   )
 }
 
-function ChatMessageItem({
+const ChatMessageItem = memo(function ChatMessageItem({
   message,
   messageRef,
 }: {
@@ -1003,7 +1053,7 @@ function ChatMessageItem({
       )}
     </article>
   )
-}
+}, (previousProps, nextProps) => previousProps.message === nextProps.message)
 
 function AiLoadingMessage() {
   return (
@@ -1039,7 +1089,7 @@ function isCodexWorking(status: ProtocolStatus) {
   return status === 'RUNNING' || status === 'INSTRUCTION_RECEIVED'
 }
 
-function MarkdownPanel({
+const MarkdownPanel = memo(function MarkdownPanel({
   markdown,
   safety,
   emptyIcon,
@@ -1072,7 +1122,7 @@ function MarkdownPanel({
       </div>
     </>
   )
-}
+})
 
 function MarkdownWarning({ safety }: { safety: MarkdownSafety }) {
   return (
