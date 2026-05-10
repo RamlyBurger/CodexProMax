@@ -2197,7 +2197,7 @@ code,
   justify-content: center;
   padding: 24px;
   background: rgba(145, 158, 171, 0.4);
-  animation: modalFadeIn 0.3s ease-out forwards;
+  animation: modalFadeIn 0.16s ease-out forwards;
   backdrop-filter: blur(4px);
 }
 
@@ -2213,8 +2213,8 @@ code,
   box-shadow: var(--shadow-lg);
   opacity: 0;
   transform: scale(0.9) translateY(10px);
-  animation: modalScaleUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  animation-delay: 0.05s;
+  animation: modalScaleUp 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: 0.02s;
 }
 
 .preview-header {
@@ -2291,8 +2291,8 @@ code,
   box-shadow: var(--shadow-lg);
   opacity: 0;
   transform: scale(0.9) translateY(10px);
-  animation: modalScaleUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  animation-delay: 0.05s;
+  animation: modalScaleUp 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: 0.02s;
 }
 
 .confirm-icon {
@@ -2398,8 +2398,8 @@ code,
   text-align: center;
   opacity: 0;
   transform: scale(0.9) translateY(10px);
-  animation: modalScaleUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  animation-delay: 0.05s;
+  animation: modalScaleUp 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: 0.02s;
 }
 
 .logout-error-dialog img {
@@ -2445,8 +2445,8 @@ code,
   box-shadow: var(--shadow-lg);
   opacity: 0;
   transform: scale(0.9) translateY(10px);
-  animation: modalScaleUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  animation-delay: 0.05s;
+  animation: modalScaleUp 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: 0.02s;
 }
 
 .document-preview-header {
