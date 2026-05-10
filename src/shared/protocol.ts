@@ -1,5 +1,6 @@
 export const VALID_STATUSES = [
   'IDLE',
+  'RUNNING',
   'WAITING_FOR_REVIEW',
   'INSTRUCTION_RECEIVED',
   'BLOCKED',
@@ -19,7 +20,11 @@ export const STATUS_DETAILS: Record<
 > = {
   IDLE: {
     owner: 'agent',
-    help: 'Agent-owned idle state. The agent can resume work or prepare the next review packet.',
+    help: 'Agent-owned idle state. No Codex work is currently in progress for this run.',
+  },
+  RUNNING: {
+    owner: 'agent',
+    help: 'Agent-owned running state. Codex has consumed the instruction and is working.',
   },
   WAITING_FOR_REVIEW: {
     owner: 'agent',
@@ -27,7 +32,7 @@ export const STATUS_DETAILS: Record<
   },
   INSTRUCTION_RECEIVED: {
     owner: 'ui',
-    help: 'UI-owned instruction state. The agent consumes instruction.txt, sets IDLE, and continues unless told to stop.',
+    help: 'UI-owned instruction state. The agent consumes instruction.txt, sets RUNNING, and continues unless told to stop.',
   },
   BLOCKED: {
     owner: 'agent',

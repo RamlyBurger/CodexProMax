@@ -130,7 +130,7 @@ describe('Codex Pro Max wait script', () => {
       sessionPath: path.join(runDir, 'session.md'),
       shouldFinish: false,
     })
-    await expect(readFile(path.join(runDir, 'status.txt'), 'utf8')).resolves.toBe('IDLE')
+    await expect(readFile(path.join(runDir, 'status.txt'), 'utf8')).resolves.toBe('RUNNING')
     await expect(readFile(path.join(runDir, 'instruction.txt'), 'utf8')).resolves.toBe('')
     await expect(readFile(path.join(runDir, 'session.md'), 'utf8')).resolves.toContain('Continue now.')
   })

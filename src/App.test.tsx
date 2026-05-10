@@ -196,6 +196,8 @@ describe('App', () => {
     expect(await screen.findByRole('button', { name: /Run A/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Run B/i })).toBeInTheDocument()
     expect(await screen.findByRole('heading', { name: 'Draft A' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Run A/i }).querySelector('.run-status-waiting-for-review')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Run B/i }).querySelector('.run-status-instruction-received')).toBeInTheDocument()
   })
 
   it('shows the latest user messages as outlines and jumps to a selected message', async () => {
@@ -243,7 +245,7 @@ describe('App', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Run B/i }))
 
     expect(await screen.findByRole('heading', { name: 'Draft B' })).toBeInTheDocument()
-    expect(screen.getByTestId('current-status')).toHaveTextContent('INSTRUCTION_RECEIVED')
+    expect(screen.getByRole('button', { name: /Run B/i }).querySelector('.run-status-instruction-received')).toBeInTheDocument()
   })
 
   it('deletes a run through the selected run endpoint', async () => {
@@ -285,9 +287,7 @@ describe('App', () => {
     })
     fireEvent.click(await screen.findByRole('button', { name: /send to codex/i }))
 
-    await waitFor(() =>
-      expect(screen.getByTestId('current-status')).toHaveTextContent('INSTRUCTION_RECEIVED'),
-    )
+    expect(await screen.findByTestId('ai-loading-indicator')).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/runs/run-a/action',
       expect.objectContaining({
@@ -316,7 +316,9 @@ describe('App', () => {
       target: { value: 'Second instruction while busy.' },
     })
 
-    expect(screen.getByRole('button', { name: /send to codex/i })).toBeDisabled()
+    const runningButton = screen.getByRole('button', { name: /codex is running/i })
+    expect(runningButton).toBeDisabled()
+    expect(runningButton.querySelector('.ri-loader-4-line')).toBeInTheDocument()
   })
 
   it('clears conversation history without deleting the selected run', async () => {
@@ -340,19 +342,33 @@ describe('App', () => {
 
   it('requests a session stop through the header button', async () => {
     const fetchMock = vi.mocked(fetch)
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    confirm.mockClear()
     render(<App />)
     await getEventSource()
 
     fireEvent.click(await screen.findByRole('button', { name: /stop session/i }))
 
+    expect(confirm).toHaveBeenCalledTimes(2)
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith('/api/runs/run-a/stop', {
         method: 'POST',
       }),
     )
-    expect(await screen.findByTestId('current-status')).toHaveTextContent('INSTRUCTION_RECEIVED')
     expect(within(screen.getByTestId('chat-scroll')).getByText('Stop this Codex Pro Max HITL session now.')).toBeInTheDocument()
+  })
+
+  it('enables stop session only while waiting for review', async () => {
+    render(<App />)
+    await getEventSource()
+
+    const stopButton = await screen.findByRole('button', { name: /stop session/i })
+    expect(stopButton).toBeEnabled()
+
+    fireEvent.click(await screen.findByRole('button', { name: /Run B/i }))
+
+    expect(await screen.findByRole('heading', { name: 'Draft B' })).toBeInTheDocument()
+    expect(stopButton).toBeDisabled()
   })
 
   it('inserts highlighted attachment mentions from the composer at-menu', async () => {
@@ -445,16 +461,19 @@ describe('App', () => {
     await waitFor(() => expect(scrollPane.scrollTop).toBe(240))
   })
 
-  it('omits workspace and current status fields from the right sidebar', async () => {
-    render(<App />)
+  it('omits workspace, current status, connection, and run count chrome', async () => {
+    const { container } = render(<App />)
     await getEventSource()
 
     const sidebar = screen.getByLabelText('Protocol details')
+    const header = container.querySelector('.chat-header') as HTMLElement
 
-    expect(await screen.findByTestId('current-status')).toHaveTextContent('WAITING_FOR_REVIEW')
     expect(within(sidebar).queryByRole('heading', { name: 'Workspace' })).not.toBeInTheDocument()
     expect(within(sidebar).queryByRole('heading', { name: 'Current Status' })).not.toBeInTheDocument()
     expect(within(sidebar).getByRole('heading', { name: 'Outlines' })).toBeInTheDocument()
+    expect(within(header).queryByText('WAITING_FOR_REVIEW')).not.toBeInTheDocument()
+    expect(within(header).queryByText('open')).not.toBeInTheDocument()
+    expect(within(header).queryByText(/runs/i)).not.toBeInTheDocument()
   })
 
   it('renders markdown safety warnings', async () => {
@@ -772,24 +791,6 @@ describe('App', () => {
     expect(screen.queryByRole('button', { name: /scroll to bottom/i })).not.toBeInTheDocument()
   })
 
-  it('shows reconnecting during SSE retry and open after recovery', async () => {
-    render(<App />)
-    const events = await getEventSource()
-
-    expect(await screen.findByText('open')).toBeInTheDocument()
-
-    act(() => {
-      events.fail()
-    })
-
-    expect(screen.getByText('reconnecting')).toBeInTheDocument()
-
-    act(() => {
-      events.open()
-    })
-
-    expect(screen.getByText('open')).toBeInTheDocument()
-  })
 })
 
 async function getEventSource(): Promise<MockEventSource> {

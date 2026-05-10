@@ -51,6 +51,15 @@ const FILE_ICONS: Record<ProtocolTextFile, string> = {
   'events.ndjson': 'ri-stack-line',
 }
 
+const RUN_STATUS_ICONS: Record<ProtocolStatus, string> = {
+  IDLE: 'ri-pause-circle-line',
+  RUNNING: 'ri-loader-4-line',
+  WAITING_FOR_REVIEW: 'ri-question-answer-line',
+  INSTRUCTION_RECEIVED: 'ri-inbox-archive-line',
+  BLOCKED: 'ri-forbid-2-line',
+  ERROR: 'ri-error-warning-line',
+}
+
 const CHAT_BOTTOM_THRESHOLD_PX = 12
 const COMPOSER_TEXTAREA_MIN_HEIGHT_PX = 44
 const COMPOSER_TEXTAREA_MAX_HEIGHT_PX = 180
@@ -71,7 +80,7 @@ type ProtocolFilePreview = {
 }
 
 function App() {
-  const { snapshot: managerSnapshot, connectionState, error: streamError } = useSnapshotStream()
+  const { snapshot: managerSnapshot, error: streamError } = useSnapshotStream()
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [runSnapshot, setRunSnapshot] = useState<Snapshot | null>(null)
   const [instruction, setInstruction] = useState('')
@@ -192,11 +201,23 @@ function App() {
       return
     }
 
+    if (status !== 'WAITING_FOR_REVIEW') {
+      setActionError('Stop is only available while the run is waiting for review.')
+      return
+    }
+
     const runLabel = selectedRun?.displayName ?? runSnapshot?.displayName ?? selectedRunId
     const confirmed = window.confirm(
       `Stop Codex for "${runLabel}"?\n\nThis sends a stop instruction through the current session.`,
     )
     if (!confirmed) {
+      return
+    }
+
+    const confirmedAgain = window.confirm(
+      `Confirm stop for "${runLabel}"?\n\nCodex will receive the canonical stop instruction for this run.`,
+    )
+    if (!confirmedAgain) {
       return
     }
 
@@ -490,7 +511,7 @@ function App() {
 
   const busy = Boolean(pending)
   const canSendInstruction =
-    Boolean(selectedRunId) && instruction.trim().length > 0 && !busy && !aiWorking
+    Boolean(selectedRunId) && instruction.trim().length > 0 && !busy && status === 'WAITING_FOR_REVIEW'
   const selectedTitle = selectedRun?.displayName ?? runSnapshot?.displayName ?? 'No run selected'
   const draggingAttachment = attachmentDragDepth > 0
   const chatContainerStyle = {
@@ -576,20 +597,15 @@ function App() {
               <span className="chat-title" title={selectedTitle}>
                 {selectedTitle}
               </span>
-              <StatusBadge status={status} />
             </div>
           </div>
 
           <div className="header-right">
-            <ConnectionPill state={connectionState} />
-            <span className="run-count-pill">
-              {runs.length} {runs.length === 1 ? 'run' : 'runs'}
-            </span>
             <button
               type="button"
               className="icon-btn danger"
               onClick={() => void handleStopSession()}
-              disabled={!selectedRunId || busy}
+              disabled={!selectedRunId || busy || status !== 'WAITING_FOR_REVIEW'}
               aria-label="Stop session"
               title="Stop session"
             >
@@ -681,6 +697,7 @@ function App() {
           draftAttachments={draftAttachments}
           pending={pending}
           canSend={canSendInstruction}
+          codexRunning={aiWorking}
           onSend={() => void sendInstruction()}
           onUpload={(file) => void handleUpload(file)}
           onPasteAttachment={handleComposerPaste}
@@ -767,7 +784,7 @@ function RunInbox({
                   title={`${run.displayName} - ${run.status}`}
                 >
                   <i
-                    className={`${run.runId === selectedRunId ? 'ri-chat-3-line' : 'ri-history-line'} run-icon`}
+                    className={`${RUN_STATUS_ICONS[run.status]} run-icon run-status-icon run-${statusClassName(run.status)}`}
                     aria-hidden="true"
                   />
                   <span className="run-title">{run.displayName}</span>
@@ -894,7 +911,7 @@ function ProfileAvatar({ type }: { type: 'bot' | 'user' }) {
 }
 
 function isCodexWorking(status: ProtocolStatus) {
-  return status === 'IDLE' || status === 'INSTRUCTION_RECEIVED'
+  return status === 'RUNNING' || status === 'INSTRUCTION_RECEIVED'
 }
 
 function MarkdownPanel({
@@ -954,6 +971,7 @@ function ReviewComposer({
   draftAttachments,
   pending,
   canSend,
+  codexRunning,
   onSend,
   onUpload,
   onPasteAttachment,
@@ -969,6 +987,7 @@ function ReviewComposer({
   draftAttachments: AttachmentMeta[]
   pending: PendingAction | null
   canSend: boolean
+  codexRunning: boolean
   onSend: () => void
   onUpload: (file: File | undefined) => void
   onPasteAttachment: (event: ClipboardEvent<HTMLTextAreaElement>) => Promise<AttachmentMeta | null>
@@ -994,6 +1013,18 @@ function ReviewComposer({
       .slice(0, 6)
   }, [attachments, mentionRange])
   const showMentionMenu = mentionOptions.length > 0
+  const sendIcon = pending === 'send'
+    ? 'ri-loader-4-line'
+    : codexRunning
+      ? 'ri-loader-4-line'
+      : canSend
+        ? 'ri-send-plane-fill'
+        : 'ri-send-plane-line'
+  const sendLabel = pending === 'send'
+    ? 'Sending...'
+    : codexRunning
+      ? 'Codex is running'
+      : 'Send to Codex'
 
   useLayoutEffect(() => {
     resizeComposerTextarea(textareaRef.current)
@@ -1195,13 +1226,13 @@ function ReviewComposer({
 
         <button
           type="button"
-          className="send-btn"
+          className={`send-btn ${codexRunning ? 'running' : ''}`}
           disabled={!canSend}
           onClick={onSend}
-          title="Send to Codex"
+          title={sendLabel}
         >
-          <i className={pending === 'send' ? 'ri-loader-4-line' : 'ri-send-plane-fill'} aria-hidden="true" />
-          <span className="sr-only">{pending === 'send' ? 'Sending...' : 'Send to Codex'}</span>
+          <i className={sendIcon} aria-hidden="true" />
+          <span className="sr-only">{sendLabel}</span>
         </button>
       </div>
 
@@ -1779,18 +1810,8 @@ function EmptyConversationHistory() {
   )
 }
 
-function StatusBadge({ status }: { status: ProtocolStatus }) {
-  const className = `status-badge status-${status.toLowerCase().replaceAll('_', '-')}`
-  return <span className={className} data-testid="current-status">{status}</span>
-}
-
-function ConnectionPill({ state }: { state: string }) {
-  return (
-    <span className={`connection-pill connection-${state}`} title={`SSE ${state}`}>
-      <span aria-hidden="true">{state}</span>
-      <span className="sr-only">SSE {state}</span>
-    </span>
-  )
+function statusClassName(status: ProtocolStatus) {
+  return `status-${status.toLowerCase().replaceAll('_', '-')}`
 }
 
 function fileMeta(snapshot: Snapshot, fileName: ProtocolTextFile): string {

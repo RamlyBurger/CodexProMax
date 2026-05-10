@@ -257,8 +257,43 @@ button:disabled {
   transition: transform 0.3s var(--ease-spring);
 }
 
+.run-status-icon {
+  color: var(--text-muted);
+}
+
+.run-status-icon.run-status-idle {
+  color: #64748b;
+}
+
+.run-status-icon.run-status-running,
+.run-status-icon.run-status-instruction-received {
+  color: var(--primary);
+}
+
+.run-status-icon.run-status-waiting-for-review {
+  color: var(--warning);
+}
+
+.run-status-icon.run-status-blocked {
+  color: var(--purple);
+}
+
+.run-status-icon.run-status-error {
+  color: var(--danger);
+}
+
+.run-status-icon.run-status-running {
+  animation: spin 1.2s linear infinite;
+}
+
 .run-item:hover .run-icon {
   transform: scale(1.1);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .run-title {
@@ -1222,6 +1257,15 @@ code,
 .send-btn:hover:not(:disabled) {
   background: var(--primary-hover);
   transform: scale(1.05) rotate(-5deg);
+}
+
+.send-btn.running {
+  background: var(--text-light);
+  box-shadow: none;
+}
+
+.send-btn.running i {
+  animation: spin 1.2s linear infinite;
 }
 
 .send-btn:active:not(:disabled) {
