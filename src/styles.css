@@ -2257,6 +2257,7 @@ code,
 }
 
 .preview-stage {
+  position: relative;
   min-height: 220px;
   flex: 1 1 auto;
   display: grid;
@@ -2273,6 +2274,79 @@ code,
   border-radius: var(--radius-sm);
   background: #ffffff;
   box-shadow: var(--shadow-sm);
+}
+
+.attachment-preview-nav {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(224, 239, 248, 0.9);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow-md);
+  color: var(--text-main);
+  font-size: 24px;
+  transform: translateY(-50%);
+}
+
+.attachment-preview-nav:hover {
+  background: #ffffff;
+  color: var(--primary);
+}
+
+.attachment-preview-nav.previous {
+  left: 14px;
+}
+
+.attachment-preview-nav.next {
+  right: 14px;
+}
+
+.attachment-preview-strip {
+  min-height: 82px;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 10px 14px 12px;
+  border-top: 1px solid rgba(224, 239, 248, 0.75);
+  background: #ffffff;
+}
+
+.attachment-preview-strip-item {
+  width: 82px;
+  min-width: 82px;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+}
+
+.attachment-preview-strip-item:hover,
+.attachment-preview-strip-item.active {
+  border-color: #bae6fd;
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.attachment-preview-strip-item .attachment-thumb {
+  width: 40px;
+  height: 40px;
+}
+
+.attachment-preview-strip-item span {
+  width: 100%;
+  overflow: hidden;
+  font-size: 10px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .confirm-backdrop {

@@ -1209,6 +1209,48 @@ describe('App', () => {
     expect(screen.getByRole('dialog', { name: 'existing.png' })).toBeInTheDocument()
   })
 
+  it('shows gallery controls for multiple image previews', async () => {
+    const attachments = [
+      attachmentFactory('first.png'),
+      attachmentFactory('second.png'),
+      attachmentFactory('third.png'),
+    ]
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse(managerFactory()))
+      .mockResolvedValueOnce(jsonResponse(snapshotFactory({ attachments })))
+
+    render(<App />)
+    await getEventSource()
+
+    const sidebar = screen.getByLabelText('Protocol details')
+    fireEvent.click(await within(sidebar).findByRole('button', { name: /preview first\.png/i }))
+
+    let dialog = screen.getByRole('dialog', { name: 'first.png' })
+    expect(within(dialog).getByRole('button', { name: 'Previous image' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Next image' })).toBeInTheDocument()
+    expect(within(dialog).getByLabelText('Image list')).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: /preview image 1: first\.png/i })).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next image' }))
+
+    dialog = await screen.findByRole('dialog', { name: 'second.png' })
+    expect(dialog.querySelector('.preview-stage img')).toHaveAttribute(
+      'src',
+      '/api/runs/run-a/attachments/second.png',
+    )
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /preview image 1: first\.png/i }))
+
+    dialog = await screen.findByRole('dialog', { name: 'first.png' })
+    expect(dialog.querySelector('.preview-stage img')).toHaveAttribute(
+      'src',
+      '/api/runs/run-a/attachments/first.png',
+    )
+  })
+
   it('shows previews for existing attachments mentioned in user messages', async () => {
     const messages: Snapshot['messages'] = [
       {
