@@ -198,6 +198,8 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: /Run B/i })).toBeInTheDocument()
     expect(await screen.findByRole('heading', { name: 'Draft A' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Run A/i }).querySelector('.run-status-waiting-for-review')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Run A/i }).querySelector('.run-status-review-orb')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Run A/i }).querySelector('.ri-question-answer-line')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Run B/i }).querySelector('.run-status-instruction-received')).toBeInTheDocument()
   })
 

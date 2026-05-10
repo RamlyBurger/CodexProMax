@@ -876,6 +876,15 @@ function RunStatusIcon({ status }: { status: ProtocolStatus }) {
     )
   }
 
+  if (status === 'WAITING_FOR_REVIEW') {
+    return (
+      <span
+        className={`run-icon run-status-icon run-status-review-orb ${statusClass}`}
+        aria-hidden="true"
+      />
+    )
+  }
+
   return (
     <i
       className={`${RUN_STATUS_ICONS[status]} run-icon run-status-icon ${statusClass}`}
