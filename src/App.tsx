@@ -58,7 +58,7 @@ const FILE_ICONS: Record<ProtocolTextFile, string> = {
 
 const PROFILE_MENU_ITEMS = [
   { label: 'Add teammates', icon: 'ri-group-line', action: 'teammates' },
-  { label: 'Workspace settings', icon: 'ri-building-2-line' },
+  { label: 'Workspace settings', icon: 'ri-building-2-line', action: 'workspace-settings' },
   { label: 'Skills', icon: 'ri-box-3-line' },
   { label: 'Personalization', icon: 'ri-sparkling-2-line' },
   { label: 'Settings', icon: 'ri-settings-3-line', action: 'settings' },
@@ -66,6 +66,7 @@ const PROFILE_MENU_ITEMS = [
   { label: 'Log out', icon: 'ri-logout-box-r-line', action: 'logout' },
 ]
 const LOGOUT_ERROR_STICKER = 'https://media.tenor.com/fTH4D95V-oQAAAAi/quby.gif'
+const WORKSPACE_SETTINGS_STICKER = 'https://media.tenor.com/OY6bIk0asR4AAAAi/quby.gif'
 
 const RUN_STATUS_ICONS: Record<ProtocolStatus, string> = {
   RUNNING: 'ri-loader-4-line',
@@ -1487,6 +1488,7 @@ function RunInbox({
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
   const [profileLogoutError, setProfileLogoutError] = useState(false)
   const [teammatesDialogOpen, setTeammatesDialogOpen] = useState(false)
+  const [workspaceSettingsDialogOpen, setWorkspaceSettingsDialogOpen] = useState(false)
   const profileAreaRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -1609,6 +1611,13 @@ function RunInbox({
                         return
                       }
 
+                      if (item.action === 'workspace-settings') {
+                        setProfileLogoutError(false)
+                        setProfileMenuOpen(false)
+                        setWorkspaceSettingsDialogOpen(true)
+                        return
+                      }
+
                       setProfileLogoutError(false)
                       setProfileMenuOpen(false)
                     }}
@@ -1659,6 +1668,10 @@ function RunInbox({
         <TeammatesDialog onClose={() => setTeammatesDialogOpen(false)} />,
         document.body,
       )}
+      {workspaceSettingsDialogOpen && createPortal(
+        <WorkspaceSettingsDialog onClose={() => setWorkspaceSettingsDialogOpen(false)} />,
+        document.body,
+      )}
     </aside>
   )
 }
@@ -1679,6 +1692,31 @@ function LogoutErrorDialog({ onClose }: { onClose: () => void }) {
         <div className="logout-error-copy">
           <h2>Unable to logout</h2>
           <p>The current local profile cannot be signed out from this console.</p>
+        </div>
+        <button type="button" className="confirm-button primary" onClick={onClose} autoFocus>
+          Close
+        </button>
+      </section>
+    </div>
+  )
+}
+
+function WorkspaceSettingsDialog({ onClose }: { onClose: () => void }) {
+  useEscapeToClose(onClose)
+
+  return (
+    <div className="preview-backdrop logout-error-backdrop" role="presentation" onClick={onClose}>
+      <section
+        className="logout-error-dialog construction-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Workspace settings under construction"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <img src={WORKSPACE_SETTINGS_STICKER} alt="Workspace settings under construction sticker" />
+        <div className="logout-error-copy">
+          <h2>Workspace settings</h2>
+          <p>This workspace settings panel is still under construction.</p>
         </div>
         <button type="button" className="confirm-button primary" onClick={onClose} autoFocus>
           Close

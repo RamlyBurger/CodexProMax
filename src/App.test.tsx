@@ -317,8 +317,20 @@ describe('App', () => {
 
     fireEvent.click(profileButton)
     const profileMenuAfterTeammates = screen.getByRole('menu', { name: 'Profile menu' })
-    expect(within(profileMenuAfterTeammates).getByRole('menuitem', { name: /Workspace settings/i })).toBeInTheDocument()
-    const logoutButton = within(profileMenuAfterTeammates).getByRole('menuitem', { name: /Log out/i })
+    fireEvent.click(within(profileMenuAfterTeammates).getByRole('menuitem', { name: /Workspace settings/i }))
+    expect(screen.queryByRole('menu', { name: 'Profile menu' })).not.toBeInTheDocument()
+    const workspaceDialog = screen.getByRole('dialog', { name: /workspace settings under construction/i })
+    expect(workspaceDialog.closest('.left-sidebar')).toBeNull()
+    expect(workspaceDialog.closest('.preview-backdrop')?.parentElement).toBe(document.body)
+    expect(within(workspaceDialog).getByText(/still under construction/i)).toBeInTheDocument()
+    expect(within(workspaceDialog).getByRole('img', { name: /workspace settings under construction sticker/i }))
+      .toHaveAttribute('src', 'https://media.tenor.com/OY6bIk0asR4AAAAi/quby.gif')
+    fireEvent.click(within(workspaceDialog).getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('dialog', { name: /workspace settings under construction/i })).not.toBeInTheDocument()
+
+    fireEvent.click(profileButton)
+    const profileMenuAfterWorkspace = screen.getByRole('menu', { name: 'Profile menu' })
+    const logoutButton = within(profileMenuAfterWorkspace).getByRole('menuitem', { name: /Log out/i })
     expect(logoutButton.querySelector('.profile-menu-chevron')).not.toBeInTheDocument()
 
     fireEvent.click(logoutButton)
