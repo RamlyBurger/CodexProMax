@@ -734,14 +734,14 @@ code,
 }
 
 .scroll-bottom-button {
-  position: absolute;
-  right: 24px;
-  bottom: 112px;
-  z-index: 25;
+  position: sticky;
+  bottom: 16px;
+  z-index: 15;
   width: 40px;
   height: 40px;
   display: grid;
   place-items: center;
+  margin: 16px 24px 0 auto;
   border: 1px solid var(--border);
   border-radius: 50%;
   background: var(--bg-surface);
@@ -827,6 +827,41 @@ code,
   border-radius: 16px 16px 4px 16px;
   background: var(--primary-soft);
   box-shadow: var(--shadow-sm);
+}
+
+.message-attachment-preview-list {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.message-attachment-preview-button {
+  max-width: 128px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--primary-hover);
+  text-align: left;
+}
+
+.message-attachment-preview-button:hover {
+  background: #ffffff;
+}
+
+.message-attachment-preview-button span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .user-bubble .prose p,
@@ -2104,8 +2139,8 @@ button:focus-visible,
   }
 
   .scroll-bottom-button {
-    right: 14px;
-    bottom: 96px;
+    bottom: 12px;
+    margin-right: 14px;
   }
 
   .message {

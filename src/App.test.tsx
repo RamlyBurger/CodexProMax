@@ -818,6 +818,43 @@ describe('App', () => {
     expect(screen.getByRole('dialog', { name: 'existing.png' })).toBeInTheDocument()
   })
 
+  it('shows previews for existing attachments mentioned in user messages', async () => {
+    const messages: Snapshot['messages'] = [
+      {
+        id: 'user-attachment',
+        role: 'user',
+        content: 'Please review @existing.png',
+        createdAtIso: '2026-05-07T00:00:01.000Z',
+      },
+    ]
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse(managerFactory()))
+      .mockResolvedValueOnce(jsonResponse(snapshotFactory({
+        messages,
+        attachments: [attachmentFactory('existing.png')],
+      })))
+
+    render(<App />)
+    await getEventSource()
+
+    const previewButton = await screen.findByRole('button', { name: /preview message attachment existing\.png/i })
+    expect(previewButton.querySelector('img')).toHaveAttribute('src', '/api/runs/run-a/attachments/existing.png')
+
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      snapshot: snapshotFactory({
+        messages,
+        attachments: [],
+      }),
+    }))
+    fireEvent.click(screen.getByRole('button', { name: /delete attachment existing\.png/i }))
+
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /preview message attachment existing\.png/i })).not.toBeInTheDocument(),
+    )
+  })
+
   it('shows only draft attachments in the composer tray with remove controls', async () => {
     render(<App />)
     await getEventSource()
@@ -911,6 +948,8 @@ describe('App', () => {
     fireEvent.click(await screen.findByRole('button', { name: /copy user message/i }))
     fireEvent.click(await screen.findByRole('button', { name: /copy codex message/i }))
 
+    const userArticle = within(screen.getByTestId('chat-scroll')).getByText('User copy text.').closest('article')
+    expect(within(userArticle as HTMLElement).queryByText('You')).not.toBeInTheDocument()
     expect(writeText).toHaveBeenCalledWith('User copy text.')
     expect(writeText).toHaveBeenCalledWith('Assistant copy text.')
   })

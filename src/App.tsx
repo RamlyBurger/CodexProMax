@@ -787,6 +787,8 @@ function App() {
                 <Fragment key={message.id}>
                   <ChatMessageItem
                     message={message}
+                    attachments={attachments}
+                    onAttachmentPreview={setPreviewAttachment}
                     animateReveal={
                       message.role === 'assistant'
                       && message.id === lastChatMessage?.id
@@ -821,19 +823,18 @@ function App() {
               </article>
             )
           )}
+          {!chatAtBottom && (
+            <button
+              type="button"
+              className="scroll-bottom-button"
+              onClick={() => scrollChatToBottom('smooth')}
+              aria-label="Scroll to bottom"
+              title="Scroll to bottom"
+            >
+              <i className="ri-arrow-down-line" aria-hidden="true" />
+            </button>
+          )}
         </div>
-
-        {!chatAtBottom && (
-          <button
-            type="button"
-            className="scroll-bottom-button"
-            onClick={() => scrollChatToBottom('smooth')}
-            aria-label="Scroll to bottom"
-            title="Scroll to bottom"
-          >
-            <i className="ri-arrow-down-line" aria-hidden="true" />
-          </button>
-        )}
 
         <ReviewComposer
           instruction={instruction}
@@ -1007,17 +1008,25 @@ function RunStatusIcon({ status }: { status: ProtocolStatus }) {
 
 const ChatMessageItem = memo(function ChatMessageItem({
   message,
+  attachments,
+  onAttachmentPreview,
   animateReveal = false,
   onAssistantRevealStart,
   messageRef,
 }: {
   message: ChatMessage
+  attachments: AttachmentMeta[]
+  onAttachmentPreview: (attachment: AttachmentMeta) => void
   animateReveal?: boolean
   onAssistantRevealStart?: (messageId: string) => void
   messageRef?: (element: HTMLElement | null) => void
 }) {
   const isUser = message.role === 'user'
   const [copied, setCopied] = useState(false)
+  const messageAttachments = useMemo(
+    () => (isUser ? getMentionedAttachments(message.content, attachments) : []),
+    [attachments, isUser, message.content],
+  )
 
   async function copyMessage() {
     try {
@@ -1040,7 +1049,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
 
       <div className="message-content">
         <div className="label-row message-label-row">
-          <span className="label-super">{isUser ? 'You' : 'Codex'}</span>
+          {!isUser && <span className="label-super">Codex</span>}
           <span className="message-actions">
             <span className="section-meta">{formatMessageTime(message.createdAtIso)}</span>
             <button
@@ -1055,6 +1064,23 @@ const ChatMessageItem = memo(function ChatMessageItem({
           </span>
         </div>
         <div className={isUser ? 'user-bubble' : undefined}>
+          {messageAttachments.length > 0 && (
+            <div className="message-attachment-preview-list">
+              {messageAttachments.map((attachment) => (
+                <button
+                  key={attachment.name}
+                  type="button"
+                  className="message-attachment-preview-button"
+                  onClick={() => onAttachmentPreview(attachment)}
+                  aria-label={`Preview message attachment ${attachment.name}`}
+                  title={`Preview ${attachment.name}`}
+                >
+                  <AttachmentThumbnail attachment={attachment} />
+                  <span>{attachment.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
           {!isUser && animateReveal ? (
             <ShuffledMarkdownReveal
               markdown={message.content}
@@ -1076,7 +1102,8 @@ const ChatMessageItem = memo(function ChatMessageItem({
       )}
     </article>
   )
-}, (previousProps, nextProps) => previousProps.message === nextProps.message)
+}, (previousProps, nextProps) =>
+  previousProps.message === nextProps.message && previousProps.attachments === nextProps.attachments)
 
 function AiLoadingMessage() {
   return (
@@ -1169,7 +1196,7 @@ function ShuffledMarkdownReveal({
     setDisplayText(createShuffledResponse(markdown, 0))
 
     let frame = 0
-    const totalFrames = Math.min(32, Math.max(12, Math.ceil(markdown.length / 100)))
+    const totalFrames = Math.min(30, Math.max(18, Math.ceil(markdown.length / 90)))
     const timer = window.setInterval(() => {
       frame += 1
       const revealedCharacters = Math.floor((markdown.length * frame) / totalFrames)
@@ -1182,7 +1209,7 @@ function ShuffledMarkdownReveal({
       }
 
       setDisplayText(createShuffledResponse(markdown, revealedCharacters))
-    }, 24)
+    }, 32)
 
     return () => window.clearInterval(timer)
   }, [markdown, onRevealStart])
@@ -1567,9 +1594,18 @@ function removeAttachmentMention(value: string, attachmentName: string): string 
   return withoutMention.trimStart()
 }
 
+function getMentionedAttachments(content: string, attachments: AttachmentMeta[]): AttachmentMeta[] {
+  return attachments.filter((attachment) => hasAttachmentMention(content, attachment.name))
+}
+
+function hasAttachmentMention(value: string, attachmentName: string): boolean {
+  const mention = `@${attachmentName}`
+  return new RegExp(`(^|\\s)${escapeRegExp(mention)}(?=\\s|$)`).test(value)
+}
+
 function appendAttachmentMention(value: string, attachmentName: string): string {
   const mention = `@${attachmentName}`
-  if (new RegExp(`(^|\\s)${escapeRegExp(mention)}(?=\\s|$)`).test(value)) {
+  if (hasAttachmentMention(value, attachmentName)) {
     return value
   }
 
