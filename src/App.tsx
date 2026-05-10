@@ -3048,7 +3048,7 @@ function AttachmentPreview({
                   key={item.url}
                 >
                   <AttachmentThumbnail attachment={item} />
-                  <span>{item.name}</span>
+                  <span className="attachment-preview-strip-label">{item.name}</span>
                 </button>
               )
             })}
