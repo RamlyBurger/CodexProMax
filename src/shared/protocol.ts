@@ -1,8 +1,6 @@
 export const VALID_STATUSES = [
   'IDLE',
   'WAITING_FOR_REVIEW',
-  'APPROVED',
-  'REVISION_REQUESTED',
   'INSTRUCTION_RECEIVED',
   'BLOCKED',
   'ERROR',
@@ -27,17 +25,9 @@ export const STATUS_DETAILS: Record<
     owner: 'agent',
     help: 'Agent-owned review state. The UI can send the next human instruction to the selected run.',
   },
-  APPROVED: {
-    owner: 'ui',
-    help: 'UI-owned approval state. The agent must consume and clear instruction.txt, then continue waiting unless explicitly told to end.',
-  },
-  REVISION_REQUESTED: {
-    owner: 'ui',
-    help: 'UI-owned revision state. The agent must consume and clear instruction.txt, set IDLE, then continue.',
-  },
   INSTRUCTION_RECEIVED: {
     owner: 'ui',
-    help: 'UI-owned instruction state. The agent must consume and clear instruction.txt, set IDLE, then execute the new instruction.',
+    help: 'UI-owned instruction state. The agent consumes instruction.txt, sets IDLE, and continues unless told to stop.',
   },
   BLOCKED: {
     owner: 'agent',
@@ -51,9 +41,9 @@ export const STATUS_DETAILS: Record<
 
 export const PROTOCOL_TEXT_FILES = [
   'status.txt',
-  'progress.md',
   'output.md',
   'instruction.txt',
+  'session.md',
   'events.ndjson',
 ] as const
 
@@ -62,11 +52,9 @@ export type ProtocolTextFile = (typeof PROTOCOL_TEXT_FILES)[number]
 export const MARKDOWN_WARN_BYTES = 500 * 1024
 export const MARKDOWN_RENDER_LIMIT_BYTES = 1024 * 1024
 
-export const MARKDOWN_FILES = ['output.md', 'progress.md'] as const
+export const MARKDOWN_FILES = ['output.md'] as const
 
 export type MarkdownFile = (typeof MARKDOWN_FILES)[number]
-
-export type ReviewAction = 'approve' | 'revision' | 'instruct'
 
 export const RUNS_DIR_NAME = 'runs'
 export const LEGACY_RUN_ID = 'legacy-root'
@@ -86,6 +74,15 @@ export interface AttachmentMeta {
   mtimeIso: string
 }
 
+export type ChatMessageRole = 'assistant' | 'user'
+
+export interface ChatMessage {
+  id: string
+  role: ChatMessageRole
+  content: string
+  createdAtIso: string
+}
+
 export interface MarkdownSafety {
   fileName: MarkdownFile
   originalBytes: number
@@ -102,11 +99,11 @@ export interface Snapshot {
   rootPath: string
   status: ProtocolStatus
   outputMd: string
-  progressMd: string
   markdownSafety: Record<MarkdownFile, MarkdownSafety>
   instruction: string
   files: Record<ProtocolTextFile, FileMeta>
   attachments: AttachmentMeta[]
+  messages: ChatMessage[]
   health: {
     serverTimeIso: string
     rootExists: boolean
@@ -132,7 +129,6 @@ export interface RunSummary {
   updatedAtIso: string | null
   updatedAtMs: number | null
   outputPreview: string
-  progressPreview: string
   attachmentCount: number
   hasInstruction: boolean
   isLegacy: boolean
@@ -150,12 +146,11 @@ export interface ManagerSnapshot {
   }
 }
 
-export interface ActionRequest {
-  action: ReviewAction
-  instruction?: string
+export interface InstructionRequest {
+  instruction: string
 }
 
-export interface ActionResponse {
+export interface RunSnapshotResponse {
   ok: true
   snapshot: Snapshot
 }

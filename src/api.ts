@@ -1,9 +1,9 @@
 import type {
-  ActionRequest,
-  ActionResponse,
   ApiErrorResponse,
+  InstructionRequest,
   ManagerResponse,
   ManagerSnapshot,
+  RunSnapshotResponse,
   Snapshot,
 } from './shared/protocol'
 
@@ -17,10 +17,10 @@ export async function fetchRunSnapshot(runId: string): Promise<Snapshot> {
   return parseJsonResponse<Snapshot>(response)
 }
 
-export async function submitAction(
+export async function submitInstruction(
   runId: string,
-  request: ActionRequest,
-): Promise<ActionResponse> {
+  request: InstructionRequest,
+): Promise<RunSnapshotResponse> {
   const response = await fetch(`/api/runs/${encodeURIComponent(runId)}/action`, {
     method: 'POST',
     headers: {
@@ -29,10 +29,10 @@ export async function submitAction(
     body: JSON.stringify(request),
   })
 
-  return parseJsonResponse<ActionResponse>(response)
+  return parseJsonResponse<RunSnapshotResponse>(response)
 }
 
-export async function uploadAttachment(runId: string, file: File): Promise<ActionResponse> {
+export async function uploadAttachment(runId: string, file: File): Promise<RunSnapshotResponse> {
   const formData = new FormData()
   formData.append('file', file)
 
@@ -41,7 +41,7 @@ export async function uploadAttachment(runId: string, file: File): Promise<Actio
     body: formData,
   })
 
-  return parseJsonResponse<ActionResponse>(response)
+  return parseJsonResponse<RunSnapshotResponse>(response)
 }
 
 export async function deleteRun(runId: string): Promise<ManagerResponse> {

@@ -1,28 +1,44 @@
 # Codex Pro Max
 
-Codex Pro Max is a local human-in-the-loop inbox for Codex-style agents. It combines a compact React UI, an Express API, Server-Sent Events, and a file protocol so multiple Codex sessions can pause for review without overwriting each other.
+Codex Pro Max is a local human-in-the-loop inbox for Codex-style agents. It gives each Codex session its own run folder, lets the agent pause with a normal final-style conclusion, and lets the human send the next instruction from a single chat composer.
 
-## Features
+The current design is intentionally small:
 
-- Multi-session inbox stored under `runs/<runId>/`.
-- React + Vite dashboard with a non-overlay run list, selected run detail pane, and a bottom composer for talking to Codex.
-- Express 5 backend with JSON APIs and Server-Sent Events.
-- Chokidar watcher scoped to protocol files, run metadata, and attachments.
-- Atomic writes for human instructions and status changes.
-- Per-run `events.ndjson` logging for user messages, backend actions, uploads, and watched protocol file changes such as `output.md` and `progress.md`.
-- Image attachment uploads with a 10MB per-file limit.
-- Markdown safety warnings above 500KB and render truncation at 1MB.
-- Status ownership help for agent-owned and UI-owned states.
-- Legacy adapter that exposes existing root-level protocol files as `legacy-root`.
-- Run deletion for real `runs/<runId>/` folders. `legacy-root` is protected.
-- Global Codex skill support through `codex-pro-max-hitl`.
+- One human input path: `Send to Codex`.
+- One UI-owned normal state: `INSTRUCTION_RECEIVED`.
+- One review state: `WAITING_FOR_REVIEW`.
+- One complete history file: `session.md`.
+- No `APPROVED`, no `REVISION_REQUESTED`, no `progress.md`.
+
+## System Overview
+
+The app has three moving parts:
+
+| Layer | Purpose |
+| --- | --- |
+| React/Vite UI | Shows the run inbox, selected conversation, protocol files, attachments, and a single instruction composer. |
+| Express API | Reads/writes run folders, validates requests, serves attachments, and exposes JSON + SSE endpoints. |
+| File protocol | Uses plain files under `runs/<runId>/` so Codex and the UI can coordinate without a database. |
+
+The normal flow is:
+
+1. Codex completes a unit of work.
+2. Codex calls `request_review.ps1 -Output "<normal conclusion>"`.
+3. The script writes `output.md`, appends the assistant message to `session.md`, deletes stale `progress.md`, and sets `status.txt` to `WAITING_FOR_REVIEW`.
+4. The UI displays the conclusion and waits for the human.
+5. The human writes one instruction and clicks `Send to Codex`.
+6. The backend writes `instruction.txt`, appends the user message to `session.md`, and sets `status.txt` to `INSTRUCTION_RECEIVED`.
+7. Codex's wait script exits.
+8. Codex calls `consume_instruction.ps1`, which reads and clears `instruction.txt`, sets `status.txt` to `IDLE`, and returns the instruction plus `sessionPath`.
+9. Codex continues unless `shouldFinish=true`.
 
 ## Requirements
 
 - Node.js 24 or newer.
 - npm 11 or newer.
+- Windows PowerShell for the bundled `.ps1` helper scripts.
 
-The app was built and tested on Windows. The default API port is `5127` because some Windows systems reserve nearby lower ports.
+The default API port is `5127`. The default Vite UI port is `5173`.
 
 ## Getting Started
 
@@ -52,235 +68,257 @@ http://127.0.0.1:5127/
 
 ## Scripts
 
-```bash
-npm run dev
-```
-
-Starts the Express API and Vite UI together with `concurrently`.
-
-```bash
-npm test
-```
-
-Runs Vitest backend and UI tests.
-
-```bash
-npm run build
-```
-
-Runs TypeScript checks and creates a production Vite build in `dist/`.
-
-```bash
-npm run preview
-```
-
-Serves the production build with Vite preview.
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Starts the Express API and Vite UI together with `concurrently`. |
+| `npm test` | Runs Vitest backend and UI tests. |
+| `npm run build` | Runs TypeScript checks and builds the production UI in `dist/`. |
+| `npm run preview` | Serves the production build with Vite preview. |
 
 ## Environment Variables
 
-```text
-CODEX_PRO_MAX_ROOT
-```
+| Variable | Purpose |
+| --- | --- |
+| `CODEX_PRO_MAX_ROOT` | Optional manager root. Defaults to the current workspace directory. |
+| `CODEX_PRO_MAX_API_PORT` | Optional API port. Defaults to `5127`. |
+| `CODEX_PRO_MAX_RUN_DIR` | Exact run directory for one Codex session. Highest priority for the skill. |
+| `CODEX_PRO_MAX_RUN_ID` | Run id used as `runs/<runId>` under the manager root. |
+| `CODEX_THREAD_ID` | Codex thread id fallback for stable per-session run folders. |
+| `CODEX_PRO_MAX_POLL_SECONDS` | Optional wait script polling interval. |
 
-Optional manager root. Defaults to the current workspace directory.
+If no run id is available, the skill creates a safe `run-<timestamp>-<random>` folder.
 
-```text
-CODEX_PRO_MAX_API_PORT
-```
+## File Protocol
 
-Optional API port. Defaults to `5127`.
-
-```text
-CODEX_PRO_MAX_RUN_DIR
-```
-
-Optional exact run directory for one Codex session. When set, the skill writes only there.
-
-```text
-CODEX_PRO_MAX_RUN_ID
-```
-
-Optional run id used as `runs/<runId>` under the manager root.
-
-```text
-CODEX_THREAD_ID
-```
-
-Codex thread id fallback for stable per-session run folders. If it is unavailable, the skill generates `run-<timestamp>-<random>`.
-
-## Multi-Run File Protocol
-
-New work is isolated per Codex session:
+Each active Codex session is isolated under `runs/<runId>/`:
 
 ```text
 <manager-root>/
   runs/
     <runId>/
       status.txt
-      progress.md
       output.md
       instruction.txt
-      attachments/
+      session.md
       events.ndjson
       run.json
+      attachments/
 ```
 
-Root-level protocol files are legacy only. If any exist, the backend exposes them in the UI as the synthetic run id `legacy-root` so old review state is not lost.
+Root-level protocol files are legacy only. If root-level protocol files exist, the backend exposes them as the synthetic run id `legacy-root` so old review state is still visible.
+
+### Core Files
 
 | Path | Owner | Purpose |
 | --- | --- | --- |
-| `runs/<runId>/status.txt` | Agent + UI | One status token that drives that run's review state. |
-| `runs/<runId>/progress.md` | Agent | Durable progress notes, next steps, and copied human instructions. |
-| `runs/<runId>/output.md` | Agent | Reviewable draft or result rendered in the UI. |
-| `runs/<runId>/instruction.txt` | UI then Agent | Human instruction. The agent consumes and clears it. |
-| `runs/<runId>/attachments/` | UI | Uploaded review images for that run. |
-| `runs/<runId>/events.ndjson` | Backend | Append-only audit log for user messages, actions, uploads, metadata changes, attachments, and watched protocol file changes. |
-| `runs/<runId>/run.json` | Agent/backend | Run metadata shown in the inbox. |
+| `status.txt` | Agent + UI | Single state token for coordination. |
+| `output.md` | Agent | Latest Codex conclusion shown to the human. |
+| `instruction.txt` | UI then agent | Current instruction waiting for Codex. Cleared after consumption. |
+| `session.md` | Agent + UI | Complete session history of assistant conclusions and user instructions. |
+| `events.ndjson` | Backend | Append-only audit log for backend/user/watcher events. |
+| `run.json` | Agent/backend | Run metadata shown in the inbox. |
+| `attachments/` | UI | Uploaded review images. |
 
-Valid statuses:
+`progress.md` is retired. New scripts delete it if they encounter an old copy.
+
+### Status Model
+
+Normal statuses:
 
 | Status | Owner | Meaning |
 | --- | --- | --- |
-| `IDLE` | Agent | Agent can work or prepare another review packet. |
-| `WAITING_FOR_REVIEW` | Agent | Agent paused and is waiting for the next human instruction/action from the UI. |
-| `APPROVED` | UI | Human approved this packet. Agent consumes `instruction.txt`, clears it, then keeps waiting unless explicitly told to end. |
-| `REVISION_REQUESTED` | UI | Human requested changes. Agent consumes `instruction.txt`, clears it, sets `IDLE`, then continues. |
-| `INSTRUCTION_RECEIVED` | UI | Human sent a new instruction. Agent consumes `instruction.txt`, clears it, sets `IDLE`, then executes it. |
-| `BLOCKED` | Agent | Agent is waiting on an external dependency or instruction. |
-| `ERROR` | Agent | Agent hit a failure and is waiting for instruction. |
+| `IDLE` | Agent | No unconsumed instruction is waiting. Codex can work or wait. |
+| `WAITING_FOR_REVIEW` | Agent | Codex has paused and the human can send the next instruction. |
+| `INSTRUCTION_RECEIVED` | UI | The UI wrote a human instruction and Codex should consume it. |
 
-Protocol writes should be atomic: write a sibling temp file, then rename it over the target.
+Exceptional statuses:
 
-Run ids are strict safe names containing only letters, digits, `.`, `_`, and `-`. API requests reject unsafe ids and never resolve outside `<manager-root>/runs`.
+| Status | Owner | Meaning |
+| --- | --- | --- |
+| `BLOCKED` | Agent | Codex is waiting on an external dependency or cannot proceed. |
+| `ERROR` | Agent | Codex hit a failure and needs human input. |
 
-## API
+Legacy status handling:
 
-```http
-GET /api/snapshot
+- `APPROVED` and `REVISION_REQUESTED` are no longer written.
+- If an old run has one of those statuses and `instruction.txt` has content, snapshots map it to `INSTRUCTION_RECEIVED`.
+- If an old run has one of those statuses and no instruction, snapshots map it to `IDLE`.
+
+### Session History
+
+`session.md` is the source of truth for conversation history. It is intentionally readable by both humans and agents.
+
+Each message is stored as a Markdown block with a metadata comment:
+
+```markdown
+<!-- codex-pro-max:message {"id":"...","role":"assistant","createdAtIso":"..."} -->
+## Codex - 2026-05-10T00:00:00.000Z
+
+Implemented the requested change.
 ```
 
-Returns a manager snapshot with the manager root, `runs/` path, all run summaries, default selected run id, and server health.
+Roles are:
 
-```http
-GET /api/runs/:runId/snapshot
-```
+- `assistant`: Codex conclusions written by `request_review.ps1` or watcher fallback.
+- `user`: human instructions sent through the UI or consumed by `consume_instruction.ps1`.
 
-Returns a per-run snapshot with status, markdown contents, file metadata, attachments, markdown safety metadata, and server health.
+Legacy `messages.ndjson` is read only for compatibility. When the backend or scripts need to write history and no `session.md` exists yet, legacy messages are seeded into `session.md` first.
 
-```http
-GET /api/events
-```
+## Backend Design
 
-Opens an SSE stream. The server sends an initial manager snapshot and subsequent manager snapshots after watched run files change.
+### Express API
 
-```http
-POST /api/runs/:runId/action
-Content-Type: application/json
-```
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/snapshot` | Manager snapshot with all runs and server health. |
+| `GET /api/runs/:runId/snapshot` | Full selected-run snapshot with status, output, files, attachments, and messages. |
+| `GET /api/events` | Server-Sent Events stream for live manager snapshots. |
+| `POST /api/runs/:runId/action` | Writes one non-empty instruction and sets `INSTRUCTION_RECEIVED`. |
+| `POST /api/runs/:runId/upload` | Uploads one raster image attachment. |
+| `GET /api/runs/:runId/attachments/:fileName` | Serves an uploaded attachment. |
+| `DELETE /api/runs/:runId` | Deletes a real run folder. `legacy-root` is protected. |
+
+The `/action` route name is kept for API compatibility, but the payload is now only:
 
 ```json
 {
-  "action": "revision",
-  "instruction": "Please adjust the summary"
+  "instruction": "Continue with the next task."
 }
 ```
 
-Accepted actions are `approve`, `revision`, and `instruct`.
+The backend writes `instruction.txt` before `status.txt` so a waiting agent never observes `INSTRUCTION_RECEIVED` without the matching instruction.
 
-- `approve` writes `APPROVED` and allows an optional instruction.
-- `revision` writes `REVISION_REQUESTED` and requires a non-empty instruction.
-- `instruct` writes `INSTRUCTION_RECEIVED` and requires a non-empty instruction.
-
-For every action, the backend writes `instruction.txt` before `status.txt`.
-
-The current UI intentionally exposes one primary send button. It posts `instruct` so the human can write any message, approval note, revision request, question, or next task in one place. The backend keeps `approve` and `revision` for protocol compatibility and tests.
-
-Each action appends audit events to the selected run's `events.ndjson`. User messages include the action, target status, full instruction text, and byte count. Compatibility `action.*` entries include status, instruction byte count, and a compact instruction preview.
-
-```http
-POST /api/runs/:runId/upload
-Content-Type: multipart/form-data
-```
-
-Uploads one image field named `file` into that run's `attachments/` directory. Supported MIME types are PNG, JPEG, GIF, WebP, BMP, and AVIF.
-
-```http
-DELETE /api/runs/:runId
-```
-
-Deletes a real run folder under `runs/` and returns an updated manager snapshot. `legacy-root` cannot be deleted through this endpoint.
-
-Legacy aliases remain available for old root-level protocol files:
+Legacy aliases remain available:
 
 - `POST /api/action`
 - `POST /api/upload`
 
 Both target `legacy-root`.
 
-## Audit Events
+### Snapshot Hub
 
-Every run has an append-only `events.ndjson` file. The backend writes one JSON object per line with an ISO timestamp and event type.
+`server/snapshotHub.ts` owns:
 
-Logged event types include:
+- Chokidar file watching.
+- SSE client management.
+- Debounced manager snapshot broadcasts.
+- Audit logging for watched protocol files, metadata, and attachments.
+- Assistant history fallback when a status file changes to `WAITING_FOR_REVIEW`.
 
-- `user.message`: every `/action` request, including full instruction text.
-- `action.approve`, `action.revision`, `action.instruct`: compatibility action audit entries with instruction metadata.
-- `upload.image`: accepted image uploads, including original name, saved name, MIME type, and size.
-- `protocol.file.changed`: watched `status.txt`, `instruction.txt`, `output.md`, and `progress.md` changes, including file size and a 1KB text preview when available.
-- `run.metadata.changed`: watched `run.json` changes.
-- `attachment.changed`: watched attachment file additions, changes, and removals.
+The watcher ignores recursive changes to `events.ndjson` so audit writes do not trigger audit loops.
 
-Changes to `events.ndjson` itself are intentionally not logged, preventing recursive audit loops.
+### Protocol Store
 
-## Codex HITL Skill
+`server/protocolStore.ts` owns:
 
-The global Codex skill lives at:
+- Safe run id validation and path resolution.
+- Snapshot construction.
+- Markdown size warnings and render truncation.
+- Attachment validation and atomic writes.
+- `session.md` parsing, writing, and legacy `messages.ndjson` migration.
+- Legacy root discovery.
+- Legacy status normalization.
+
+Run ids must match the safe-name rules and cannot escape `<manager-root>/runs`.
+
+## UI Design
+
+The React app is a dense local operations UI, not a landing page.
+
+Main surfaces:
+
+- Left sidebar: run inbox, active run selection, delete controls for real runs.
+- Center: chat-style conversation from `session.md`, with assistant and user messages in chronological order.
+- Bottom composer: one text box and one send button for all human input.
+- Attachment control: image upload from file picker or drag/drop.
+- Right sidebar: workspace path, current status, protocol file presence, and attachment list.
+
+Important UI behavior:
+
+- New messages auto-scroll only if the user was already near the bottom.
+- If the user scrolls up, new messages do not yank the viewport.
+- Clicking an attachment opens an image preview dialog.
+- The UI shows only the simplified normal protocol files.
+
+## Codex Skill Runtime
+
+The global skill lives at:
 
 ```text
 C:\Users\ramly\.codex\skills\codex-pro-max-hitl
 ```
 
-Use it when an agent needs to pause for review through this app:
+The global Codex instruction file should point to that skill:
 
 ```text
-$codex-pro-max-hitl
+C:\Users\ramly\.codex\AGENTS.md
 ```
 
-The skill resolves the run directory in this order:
+Run directory resolution priority:
 
 1. `CODEX_PRO_MAX_RUN_DIR`
 2. `CODEX_PRO_MAX_ROOT\runs\CODEX_PRO_MAX_RUN_ID`
 3. `CODEX_PRO_MAX_ROOT\runs\CODEX_THREAD_ID`
 4. `CODEX_PRO_MAX_ROOT\runs\run-<timestamp>-<random>`
 
-The skill instructs Codex to:
+Helper scripts:
 
-- Read existing run protocol files before writing new state.
-- Write `progress.md`, `output.md`, then `status.txt = WAITING_FOR_REVIEW` inside its own run folder.
-- Run one blocking wait script instead of manually polling `status.txt`.
-- Consume and clear `instruction.txt` before continuing.
-- Treat `APPROVED` as packet approval, not session termination; continue waiting unless the human explicitly tells Codex to end the workflow.
+| Script | Purpose |
+| --- | --- |
+| `request_review.ps1` | Writes `output.md`, appends assistant history to `session.md`, deletes stale `progress.md`, sets `WAITING_FOR_REVIEW`. |
+| `consume_instruction.ps1` | Reads `instruction.txt`, appends user history to `session.md`, clears instruction, sets `IDLE`, returns JSON. |
+| `wait_for_review.ps1` | Blocks until `status.txt` becomes `INSTRUCTION_RECEIVED`. |
+| `wait_for_review.sh` | Shell equivalent for non-Windows environments. |
 
-Bundled wait scripts:
+The agent should only stop when `consume_instruction.ps1` returns `shouldFinish=true`.
 
-```text
-C:\Users\ramly\.codex\skills\codex-pro-max-hitl\scripts\wait_for_review.ps1
-C:\Users\ramly\.codex\skills\codex-pro-max-hitl\scripts\wait_for_review.sh
-```
+## Audit Events
+
+Every run has an append-only `events.ndjson`.
+
+Common event types:
+
+- `user.message`: full submitted instruction and target status.
+- `instruction.sent`: instruction preview and byte count.
+- `upload.image`: accepted image upload metadata.
+- `protocol.file.changed`: watched protocol file add/change/unlink with preview when available.
+- `run.metadata.changed`: `run.json` changes.
+- `attachment.changed`: attachment additions, changes, and removals.
+
+Audit events are for traceability. `session.md` is the conversational history that agents should read.
+
+## Compatibility and Migration
+
+Compatibility behavior exists so old runs keep working:
+
+- Existing `messages.ndjson` is parsed and migrated into `session.md`.
+- Old `APPROVED` / `REVISION_REQUESTED` statuses are normalized in snapshots.
+- Root-level protocol files appear as `legacy-root`.
+- The route name `/action` remains, but request bodies no longer contain an action field.
+
+New code should not write:
+
+- `progress.md`
+- `APPROVED`
+- `REVISION_REQUESTED`
+- new `messages.ndjson` entries
 
 ## Project Structure
 
 ```text
 server/
-  app.ts             Express routes and middleware.
-  protocolStore.ts   Multi-run file protocol reads, writes, safety checks, and uploads.
-  snapshotHub.ts     Chokidar watcher and SSE broadcast hub.
+  app.ts              Express routes and middleware.
+  protocolStore.ts    File protocol reads, writes, safety checks, session parsing, uploads.
+  snapshotHub.ts      Chokidar watcher and SSE broadcast hub.
 
 src/
-  App.tsx            Inbox dashboard UI.
-  api.ts             Browser API helpers.
-  hooks/             SSE manager snapshot stream hook.
-  shared/            Protocol types shared by backend and frontend.
+  App.tsx             Inbox dashboard UI.
+  api.ts              Browser API helpers.
+  hooks/              SSE manager snapshot stream hook.
+  shared/             Protocol types shared by backend and frontend.
+
+runs/
+  <runId>/            Local runtime state. Not source code.
 ```
 
 ## Testing
@@ -288,21 +326,28 @@ src/
 The test suite covers:
 
 - Empty manager snapshots.
-- Legacy root discovery as `legacy-root`.
-- Independent state for multiple runs.
-- Per-run action and upload isolation.
-- Per-run deletion and `legacy-root` deletion protection.
-- User message and watched protocol file audit logging.
-- Unsafe run id rejection.
+- Legacy root discovery.
+- Per-run instruction isolation.
+- Per-run deletion and `legacy-root` protection.
 - Instruction-before-status write ordering.
-- Revision and instruction validation.
+- Blank instruction rejection.
+- Legacy status normalization.
+- Session history append and legacy migration.
 - Upload validation and file size limits.
-- SSE manager snapshot delivery after watched changes.
+- Watched protocol file audit logging.
+- SSE snapshot delivery after watched changes.
 - Markdown warning and truncation behavior.
-- UI run selection, selected-run actions, status ownership, markdown warnings, and reconnecting state.
+- UI run selection, send button, status help, markdown warnings, image preview, reconnecting state, and bottom-pinned chat scrolling.
+- Helper script behavior for request review, consume instruction, and wait-for-instruction.
 
-Run all tests with:
+Run all tests:
 
 ```bash
 npm test
+```
+
+Build and type-check:
+
+```bash
+npm run build
 ```

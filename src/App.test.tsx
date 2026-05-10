@@ -54,7 +54,6 @@ beforeEach(() => {
           runId: 'run-a',
           displayName: 'Run A',
           outputMd: '## Draft A\n\nReady for review.',
-          progressMd: '## Progress A\n\n- Waiting',
         }))
       }
 
@@ -62,9 +61,8 @@ beforeEach(() => {
         return jsonResponse(snapshotFactory({
           runId: 'run-b',
           displayName: 'Run B',
-          status: 'APPROVED',
-          outputMd: '## Draft B\n\nApproved packet.',
-          progressMd: '## Progress B\n\n- Done',
+          status: 'INSTRUCTION_RECEIVED',
+          outputMd: '## Draft B\n\nInstruction packet.',
         }))
       }
 
@@ -77,12 +75,11 @@ beforeEach(() => {
                 runId: 'run-b',
                 displayName: 'Run B',
                 rootPath: 'C:\\Users\\ramly\\Desktop\\CodexProMax\\runs\\run-b',
-                status: 'APPROVED',
+                status: 'INSTRUCTION_RECEIVED',
                 owner: 'ui',
                 updatedAtIso: '2026-05-07T00:00:02.000Z',
                 updatedAtMs: 2,
-                outputPreview: 'Approved packet.',
-                progressPreview: 'Done',
+                outputPreview: 'Instruction packet.',
                 attachmentCount: 0,
                 hasInstruction: false,
                 isLegacy: false,
@@ -94,20 +91,13 @@ beforeEach(() => {
       }
 
       if (requestUrl.includes('/api/runs/') && requestUrl.includes('/action')) {
-        const payload = JSON.parse(String(init?.body)) as {
-          action: 'approve' | 'revision' | 'instruct'
-        }
+        JSON.parse(String(init?.body)) as { instruction: string }
         return jsonResponse({
           ok: true,
           snapshot: snapshotFactory({
             runId: 'run-a',
             displayName: 'Run A',
-            status:
-              payload.action === 'approve'
-                ? 'APPROVED'
-                : payload.action === 'revision'
-                  ? 'REVISION_REQUESTED'
-                  : 'INSTRUCTION_RECEIVED',
+            status: 'INSTRUCTION_RECEIVED',
           }),
         })
       }
@@ -139,14 +129,13 @@ afterEach(() => {
 })
 
 describe('App', () => {
-  it('renders multiple runs and selected output/progress markdown', async () => {
+  it('renders multiple runs and selected output markdown', async () => {
     render(<App />)
     await getEventSource()
 
     expect(await screen.findByRole('button', { name: /Run A/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Run B/i })).toBeInTheDocument()
     expect(await screen.findByRole('heading', { name: 'Draft A' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Progress A' })).toBeInTheDocument()
   })
 
   it('selects a different run and switches detail content', async () => {
@@ -156,7 +145,7 @@ describe('App', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Run B/i }))
 
     expect(await screen.findByRole('heading', { name: 'Draft B' })).toBeInTheDocument()
-    expect(screen.getByTestId('current-status')).toHaveTextContent('APPROVED')
+    expect(screen.getByTestId('current-status')).toHaveTextContent('INSTRUCTION_RECEIVED')
   })
 
   it('deletes a run through the selected run endpoint', async () => {
@@ -206,7 +195,6 @@ describe('App', () => {
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({
-          action: 'instruct',
           instruction: 'Keep waiting and start the next task.',
         }),
       }),
@@ -220,7 +208,7 @@ describe('App', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Run B/i }))
 
     expect(await screen.findByTestId('status-owner')).toHaveTextContent('ui')
-    expect(screen.getAllByText(/consume and clear instruction.txt/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/consumes instruction.txt/i).length).toBeGreaterThan(0)
   })
 
   it('renders markdown safety warnings', async () => {
@@ -250,7 +238,6 @@ describe('App', () => {
               warning: true,
               truncated: true,
             }),
-            'progress.md': markdownSafety('progress.md'),
           },
         }),
       }),
@@ -261,6 +248,104 @@ describe('App', () => {
     expect(await screen.findByTestId('output.md-markdown-warning')).toHaveTextContent(
       'Rendering first',
     )
+  })
+
+  it('opens uploaded attachments in an image preview', async () => {
+    render(<App />)
+    await getEventSource()
+
+    const file = new File(['image'], 'review.png', { type: 'image/png' })
+    fireEvent.change(await screen.findByLabelText(/attach review image/i), {
+      target: { files: [file] },
+    })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'uploaded.png' }))
+
+    expect(screen.getByRole('dialog', { name: 'uploaded.png' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'uploaded.png' })).toHaveAttribute(
+      'src',
+      '/api/runs/run-a/attachments/uploaded.png',
+    )
+  })
+
+  it('keeps the chat pinned to the bottom when a new message arrives while already at bottom', async () => {
+    render(<App />)
+    await getEventSource()
+
+    expect(await screen.findByRole('heading', { name: 'Draft A' })).toBeInTheDocument()
+
+    const scrollPane = screen.getByTestId('chat-scroll')
+    const metrics = setScrollMetrics(scrollPane, {
+      clientHeight: 100,
+      scrollHeight: 240,
+      scrollTop: 140,
+    })
+    fireEvent.scroll(scrollPane)
+    metrics.setScrollHeight(480)
+
+    const messages: Snapshot['messages'] = [
+      {
+        id: 'user-1',
+        role: 'user',
+        content: 'Continue',
+        createdAtIso: '2026-05-07T00:00:01.000Z',
+      },
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        content: 'New review packet is ready.',
+        createdAtIso: '2026-05-07T00:00:02.000Z',
+      },
+    ]
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ ok: true, snapshot: snapshotFactory({ messages }) }))
+
+    fireEvent.change(screen.getByLabelText('Instruction'), {
+      target: { value: 'Continue' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /send to codex/i }))
+
+    expect(await screen.findByText('New review packet is ready.')).toBeInTheDocument()
+    await waitFor(() => expect(scrollPane.scrollTop).toBe(480))
+  })
+
+  it('does not force-scroll when a new message arrives while the user is scrolled up', async () => {
+    render(<App />)
+    await getEventSource()
+
+    expect(await screen.findByRole('heading', { name: 'Draft A' })).toBeInTheDocument()
+
+    const scrollPane = screen.getByTestId('chat-scroll')
+    const metrics = setScrollMetrics(scrollPane, {
+      clientHeight: 100,
+      scrollHeight: 240,
+      scrollTop: 60,
+    })
+    fireEvent.scroll(scrollPane)
+    metrics.setScrollHeight(480)
+
+    const messages: Snapshot['messages'] = [
+      {
+        id: 'user-1',
+        role: 'user',
+        content: 'Continue',
+        createdAtIso: '2026-05-07T00:00:01.000Z',
+      },
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        content: 'New review packet is ready.',
+        createdAtIso: '2026-05-07T00:00:02.000Z',
+      },
+    ]
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ ok: true, snapshot: snapshotFactory({ messages }) }))
+
+    fireEvent.change(screen.getByLabelText('Instruction'), {
+      target: { value: 'Continue' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /send to codex/i }))
+
+    expect(await screen.findByText('New review packet is ready.')).toBeInTheDocument()
+    expect(scrollPane.scrollTop).toBe(60)
   })
 
   it('shows reconnecting during SSE retry and open after recovery', async () => {
@@ -316,7 +401,6 @@ function managerFactory(overrides: Partial<ManagerSnapshot> = {}): ManagerSnapsh
         updatedAtIso: '2026-05-07T00:00:00.000Z',
         updatedAtMs: 1,
         outputPreview: 'Ready for review.',
-        progressPreview: 'Waiting',
         attachmentCount: 0,
         hasInstruction: false,
         isLegacy: false,
@@ -325,12 +409,11 @@ function managerFactory(overrides: Partial<ManagerSnapshot> = {}): ManagerSnapsh
         runId: 'run-b',
         displayName: 'Run B',
         rootPath: 'C:\\Users\\ramly\\Desktop\\CodexProMax\\runs\\run-b',
-        status: 'APPROVED',
+        status: 'INSTRUCTION_RECEIVED',
         owner: 'ui',
         updatedAtIso: '2026-05-07T00:01:00.000Z',
         updatedAtMs: 2,
-        outputPreview: 'Approved packet.',
-        progressPreview: 'Done',
+        outputPreview: 'Instruction packet.',
         attachmentCount: 1,
         hasInstruction: false,
         isLegacy: false,
@@ -348,9 +431,9 @@ function managerFactory(overrides: Partial<ManagerSnapshot> = {}): ManagerSnapsh
 function snapshotFactory(overrides: Partial<Snapshot> = {}): Snapshot {
   const files = {
     'status.txt': fileMeta(true),
-    'progress.md': fileMeta(true),
     'output.md': fileMeta(true),
     'instruction.txt': fileMeta(false),
+    'session.md': fileMeta(false),
     'events.ndjson': fileMeta(false),
   }
 
@@ -360,14 +443,13 @@ function snapshotFactory(overrides: Partial<Snapshot> = {}): Snapshot {
     rootPath: 'C:\\Users\\ramly\\Desktop\\CodexProMax\\runs\\run-a',
     status: 'WAITING_FOR_REVIEW',
     outputMd: '',
-    progressMd: '',
     markdownSafety: {
       'output.md': markdownSafety('output.md'),
-      'progress.md': markdownSafety('progress.md'),
     },
     instruction: '',
     files,
     attachments: [],
+    messages: [],
     health: {
       rootExists: true,
       watcherReady: true,
@@ -378,7 +460,7 @@ function snapshotFactory(overrides: Partial<Snapshot> = {}): Snapshot {
 }
 
 function markdownSafety(
-  fileName: 'output.md' | 'progress.md',
+  fileName: 'output.md',
   overrides: Partial<Snapshot['markdownSafety']['output.md']> = {},
 ) {
   return {
@@ -399,5 +481,32 @@ function fileMeta(exists: boolean) {
     mtimeMs: exists ? 1 : null,
     mtimeIso: exists ? '2026-05-07T00:00:00.000Z' : null,
     size: exists ? 12 : null,
+  }
+}
+
+function setScrollMetrics(
+  element: HTMLElement,
+  metrics: {
+    clientHeight: number
+    scrollHeight: number
+    scrollTop: number
+  },
+) {
+  let scrollHeight = metrics.scrollHeight
+
+  Object.defineProperty(element, 'clientHeight', {
+    configurable: true,
+    get: () => metrics.clientHeight,
+  })
+  Object.defineProperty(element, 'scrollHeight', {
+    configurable: true,
+    get: () => scrollHeight,
+  })
+  element.scrollTop = metrics.scrollTop
+
+  return {
+    setScrollHeight(nextScrollHeight: number) {
+      scrollHeight = nextScrollHeight
+    },
   }
 }

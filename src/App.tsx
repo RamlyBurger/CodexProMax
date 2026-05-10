@@ -1,19 +1,19 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type UIEvent } from 'react'
 import ReactMarkdown from 'react-markdown'
 import {
   deleteRun as deleteRunRequest,
   fetchRunSnapshot,
-  submitAction,
+  submitInstruction,
   uploadAttachment,
 } from './api'
 import { useSnapshotStream } from './hooks/useSnapshotStream'
 import type {
   AttachmentMeta,
+  ChatMessage,
   ManagerSnapshot,
   MarkdownSafety,
   ProtocolStatus,
   ProtocolTextFile,
-  ReviewAction,
   RunSummary,
   Snapshot,
 } from './shared/protocol'
@@ -26,22 +26,28 @@ const dateFormatter = new Intl.DateTimeFormat(undefined, {
 
 const FILE_ICONS: Record<ProtocolTextFile, string> = {
   'status.txt': 'ri-flag-2-line',
-  'progress.md': 'ri-list-check-3',
   'output.md': 'ri-article-line',
   'instruction.txt': 'ri-quill-pen-line',
+  'session.md': 'ri-chat-history-line',
   'events.ndjson': 'ri-stack-line',
 }
+
+const CHAT_BOTTOM_THRESHOLD_PX = 12
 
 function App() {
   const { snapshot: managerSnapshot, connectionState, error: streamError } = useSnapshotStream()
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [runSnapshot, setRunSnapshot] = useState<Snapshot | null>(null)
   const [instruction, setInstruction] = useState('')
-  const [pending, setPending] = useState<ReviewAction | 'upload' | 'load' | null>(null)
+  const [pending, setPending] = useState<'send' | 'upload' | 'load' | null>(null)
   const [deletingRunId, setDeletingRunId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
+  const [attachmentDragDepth, setAttachmentDragDepth] = useState(0)
+  const [previewAttachment, setPreviewAttachment] = useState<AttachmentMeta | null>(null)
+  const chatScrollRef = useRef<HTMLDivElement | null>(null)
+  const chatPinnedToBottomRef = useRef(true)
 
   const runs = managerSnapshot?.runs ?? []
   const selectedRun = runs.find((run) => run.runId === selectedRunId) ?? null
@@ -89,17 +95,17 @@ function App() {
     }
   }, [selectedRunId, managerSnapshot?.health.serverTimeIso])
 
-  async function runAction(action: ReviewAction) {
+  async function sendInstruction() {
     if (!selectedRunId) {
-      setActionError('Select a run before sending a review action.')
+      setActionError('Select a run before sending an instruction.')
       return
     }
 
-    setPending(action)
+    setPending('send')
     setActionError(null)
 
     try {
-      const response = await submitAction(selectedRunId, { action, instruction })
+      const response = await submitInstruction(selectedRunId, { instruction })
       setRunSnapshot(response.snapshot)
       setInstruction('')
     } catch (error) {
@@ -125,6 +131,63 @@ function App() {
     } finally {
       setPending(null)
     }
+  }
+
+  function handleAttachmentDragEnter(event: DragEvent<HTMLElement>) {
+    if (!eventHasFiles(event)) {
+      return
+    }
+
+    event.preventDefault()
+    setAttachmentDragDepth((value) => value + 1)
+  }
+
+  function handleAttachmentDragOver(event: DragEvent<HTMLElement>) {
+    if (!eventHasFiles(event)) {
+      return
+    }
+
+    event.preventDefault()
+    event.dataTransfer.dropEffect = selectedRunId && !pending ? 'copy' : 'none'
+  }
+
+  function handleAttachmentDragLeave(event: DragEvent<HTMLElement>) {
+    if (!eventHasFiles(event)) {
+      return
+    }
+
+    event.preventDefault()
+    setAttachmentDragDepth((value) => Math.max(0, value - 1))
+  }
+
+  function handleAttachmentDrop(event: DragEvent<HTMLElement>) {
+    if (!eventHasFiles(event)) {
+      return
+    }
+
+    event.preventDefault()
+    setAttachmentDragDepth(0)
+
+    if (!selectedRunId) {
+      setActionError('Select a run before dropping attachments.')
+      return
+    }
+
+    if (pending) {
+      return
+    }
+
+    const file = Array.from(event.dataTransfer.files).find((item) => item.type.startsWith('image/'))
+    if (!file) {
+      setActionError('Only image attachments are supported.')
+      return
+    }
+
+    void handleUpload(file)
+  }
+
+  function handleChatScroll(event: UIEvent<HTMLDivElement>) {
+    chatPinnedToBottomRef.current = isScrolledNearBottom(event.currentTarget)
   }
 
   async function handleDeleteRun(run: RunSummary) {
@@ -159,14 +222,44 @@ function App() {
   const status: ProtocolStatus = runSnapshot?.status ?? selectedRun?.status ?? 'IDLE'
   const statusDetails = STATUS_DETAILS[status]
   const attachments = runSnapshot?.attachments ?? []
+  const chatMessages = runSnapshot?.messages ?? []
+  const lastChatMessage = chatMessages.length > 0 ? chatMessages[chatMessages.length - 1] : null
+  const chatScrollAnchor = [
+    runSnapshot?.runId ?? selectedRunId ?? 'none',
+    chatMessages.length,
+    lastChatMessage?.id ?? 'none',
+    lastChatMessage?.createdAtIso ?? 'none',
+    lastChatMessage?.content.length ?? 0,
+    pending === 'load' ? 'loading' : 'ready',
+  ].join(':')
   const filesPresent = useMemo(() => {
     if (!runSnapshot) return 0
     return PROTOCOL_TEXT_FILES.filter((name) => runSnapshot.files[name]?.exists).length
   }, [runSnapshot])
 
+  useLayoutEffect(() => {
+    chatPinnedToBottomRef.current = true
+  }, [selectedRunId])
+
+  useLayoutEffect(() => {
+    const scrollElement = chatScrollRef.current
+    if (!scrollElement || !chatPinnedToBottomRef.current) {
+      return
+    }
+
+    scrollElement.scrollTop = scrollElement.scrollHeight
+  }, [chatScrollAnchor])
+
+  useEffect(() => {
+    if (!previewAttachment) return
+    const stillExists = attachments.some((attachment) => attachment.url === previewAttachment.url)
+    if (!stillExists) setPreviewAttachment(null)
+  }, [attachments, previewAttachment])
+
   const busy = Boolean(pending)
   const selectedTitle = selectedRun?.displayName ?? runSnapshot?.displayName ?? 'No run selected'
   const managerRoot = managerSnapshot?.rootPath ?? 'Loading workspace...'
+  const draggingAttachment = attachmentDragDepth > 0
 
   return (
     <div className={`app ${leftCollapsed ? 'left-collapsed' : ''} ${rightCollapsed ? 'right-collapsed' : ''}`}>
@@ -183,7 +276,13 @@ function App() {
         onDelete={(run) => void handleDeleteRun(run)}
       />
 
-      <main className="chat-container">
+      <main
+        className={`chat-container ${draggingAttachment ? 'dragging-attachment' : ''}`}
+        onDragEnter={handleAttachmentDragEnter}
+        onDragOver={handleAttachmentDragOver}
+        onDragLeave={handleAttachmentDragLeave}
+        onDrop={handleAttachmentDrop}
+      >
         <header className="chat-header">
           <div className="header-left">
             <button
@@ -221,42 +320,34 @@ function App() {
           </div>
         </header>
 
-        <div className="chat-scroll">
+        {draggingAttachment && (
+          <div className="drop-overlay" aria-hidden="true">
+            <i className="ri-image-add-line" />
+            <span>Drop image to attach</span>
+          </div>
+        )}
+
+        <div className="chat-scroll" ref={chatScrollRef} onScroll={handleChatScroll} data-testid="chat-scroll">
           {runs.length === 0 ? (
             <EmptyInbox managerSnapshot={managerSnapshot} />
           ) : (
-            <article className="message">
-              <div className="avatar" aria-hidden="true">
-                <i className="ri-robot-2-fill" />
-              </div>
-
-              <div className="message-content">
-                <StatusSummary
-                  managerSnapshot={managerSnapshot}
-                  runSnapshot={runSnapshot}
-                  selectedRun={selectedRun}
-                  filesPresent={filesPresent}
-                />
-
-                <MarkdownMessageBlock
-                  label="Output"
-                  meta={runSnapshot ? fileMeta(runSnapshot, 'output.md') : null}
-                  markdown={runSnapshot?.outputMd ?? ''}
-                  safety={runSnapshot?.markdownSafety['output.md'] ?? null}
-                  emptyIcon="ri-file-paper-2-line"
-                  emptyText={pending === 'load' ? 'Loading run output...' : 'No output draft yet.'}
-                />
-
-                <MarkdownMessageBlock
-                  label="Progress Notes"
-                  meta={runSnapshot ? fileMeta(runSnapshot, 'progress.md') : null}
-                  markdown={runSnapshot?.progressMd ?? ''}
-                  safety={runSnapshot?.markdownSafety['progress.md'] ?? null}
-                  emptyIcon="ri-quill-pen-line"
-                  emptyText={pending === 'load' ? 'Loading run progress...' : 'No progress notes yet.'}
-                />
-              </div>
-            </article>
+            chatMessages.length > 0 ? (
+              chatMessages.map((message) => <ChatMessageItem key={message.id} message={message} />)
+            ) : (
+              <article className="message">
+                <div className="avatar" aria-hidden="true">
+                  <i className="ri-robot-2-fill" />
+                </div>
+                <div className="message-content">
+                  <MarkdownPanel
+                    markdown={pending === 'load' ? '' : runSnapshot?.outputMd ?? ''}
+                    safety={runSnapshot?.markdownSafety['output.md'] ?? null}
+                    emptyIcon="ri-file-paper-2-line"
+                    emptyText={pending === 'load' ? 'Loading run output...' : 'No output draft yet.'}
+                  />
+                </div>
+              </article>
+            )
           )}
         </div>
 
@@ -265,7 +356,7 @@ function App() {
           onInstructionChange={setInstruction}
           pending={pending}
           canSend={Boolean(selectedRunId) && instruction.trim().length > 0 && !busy}
-          onSend={() => void runAction('instruct')}
+          onSend={() => void sendInstruction()}
           onUpload={(file) => void handleUpload(file)}
           error={actionError ?? streamError ?? null}
         />
@@ -278,8 +369,13 @@ function App() {
         statusDetails={statusDetails}
         snapshot={runSnapshot}
         attachments={attachments}
+        onAttachmentPreview={setPreviewAttachment}
         filesPresent={filesPresent}
       />
+
+      {previewAttachment && (
+        <AttachmentPreview attachment={previewAttachment} onClose={() => setPreviewAttachment(null)} />
+      )}
     </div>
   )
 }
@@ -340,7 +436,7 @@ function RunInbox({
                     {run.attachmentCount > 0 ? ` - ${run.attachmentCount} attachments` : ''}
                   </span>
                   <span className="run-preview">
-                    {run.outputPreview || run.progressPreview || 'No output yet.'}
+                    {run.outputPreview || 'No output yet.'}
                   </span>
                 </button>
 
@@ -365,75 +461,37 @@ function RunInbox({
   )
 }
 
-function StatusSummary({
-  managerSnapshot,
-  runSnapshot,
-  selectedRun,
-  filesPresent,
-}: {
-  managerSnapshot: ManagerSnapshot | null
-  runSnapshot: Snapshot | null
-  selectedRun: RunSummary | null
-  filesPresent: number
-}) {
-  const status = runSnapshot?.status ?? selectedRun?.status ?? 'IDLE'
-  const detail = STATUS_DETAILS[status]
-  const runCount = managerSnapshot?.runs.length ?? 0
-  const activeCount =
-    managerSnapshot?.runs.filter((run) => run.status === 'WAITING_FOR_REVIEW' || run.owner === 'ui').length ?? 0
-
+function ChatMessageItem({ message }: { message: ChatMessage }) {
+  const isUser = message.role === 'user'
   return (
-    <section className="summary-strip" aria-label="Protocol summary">
-      <MetricPill icon="ri-inbox-line" value={`${runCount}`} label="Runs" />
-      <MetricPill icon="ri-pulse-line" value={`${activeCount}`} label="Needs review" />
-      <MetricPill
-        icon={detail.owner === 'ui' ? 'ri-user-3-line' : 'ri-robot-2-line'}
-        value={detail.owner === 'ui' ? 'Human' : 'Agent'}
-        label="Owner"
-      />
-      <MetricPill icon="ri-file-list-3-line" value={`${filesPresent}/${PROTOCOL_TEXT_FILES.length}`} label="Files" />
-      <p className="status-help">
-        {selectedRun
-          ? `${selectedRun.displayName}: ${detail.help}`
-          : 'No run selected. Create runs/<runId>/ or start a Codex session with the HITL skill.'}
-      </p>
-    </section>
-  )
-}
+    <article className={`message chat-message ${isUser ? 'user-message' : 'assistant-message'}`}>
+      {!isUser && (
+        <div className="avatar" aria-hidden="true">
+          <i className="ri-robot-2-fill" />
+        </div>
+      )}
 
-function MetricPill({ icon, value, label }: { icon: string; value: string; label: string }) {
-  return (
-    <div className="metric-pill">
-      <i className={icon} aria-hidden="true" />
-      <span className="metric-value">{value}</span>
-      <span className="metric-label">{label}</span>
-    </div>
-  )
-}
-
-function MarkdownMessageBlock({
-  label,
-  meta,
-  markdown,
-  safety,
-  emptyIcon,
-  emptyText,
-}: {
-  label: string
-  meta?: ReactNode
-  markdown: string
-  safety: MarkdownSafety | null
-  emptyIcon?: string
-  emptyText: string
-}) {
-  return (
-    <section className="message-block" aria-label={label}>
-      <div className="label-row">
-        <span className="label-super">{label}</span>
-        {meta && <span className="section-meta">{meta}</span>}
+      <div className="message-content">
+        <div className="label-row message-label-row">
+          <span className="label-super">{isUser ? 'You' : 'Codex'}</span>
+          <span className="section-meta">{formatMessageTime(message.createdAtIso)}</span>
+        </div>
+        <div className={isUser ? 'user-bubble' : undefined}>
+          <MarkdownPanel
+            markdown={message.content}
+            safety={null}
+            emptyIcon={isUser ? 'ri-user-3-line' : 'ri-file-paper-2-line'}
+            emptyText={isUser ? 'Empty message.' : 'No output draft yet.'}
+          />
+        </div>
       </div>
-      <MarkdownPanel markdown={markdown} safety={safety} emptyIcon={emptyIcon} emptyText={emptyText} />
-    </section>
+
+      {isUser && (
+        <div className="avatar user-avatar" aria-hidden="true">
+          <i className="ri-user-3-fill" />
+        </div>
+      )}
+    </article>
   )
 }
 
@@ -498,7 +556,7 @@ function ReviewComposer({
 }: {
   instruction: string
   onInstructionChange: (value: string) => void
-  pending: ReviewAction | 'upload' | 'load' | null
+  pending: 'send' | 'upload' | 'load' | null
   canSend: boolean
   onSend: () => void
   onUpload: (file: File | undefined) => void
@@ -540,8 +598,8 @@ function ReviewComposer({
           onClick={onSend}
           title="Send to Codex"
         >
-          <i className={pending === 'instruct' ? 'ri-loader-4-line' : 'ri-send-plane-fill'} aria-hidden="true" />
-          <span className="sr-only">{pending === 'instruct' ? 'Sending...' : 'Send to Codex'}</span>
+          <i className={pending === 'send' ? 'ri-loader-4-line' : 'ri-send-plane-fill'} aria-hidden="true" />
+          <span className="sr-only">{pending === 'send' ? 'Sending...' : 'Send to Codex'}</span>
         </button>
       </div>
 
@@ -555,6 +613,14 @@ function ReviewComposer({
   )
 }
 
+function eventHasFiles(event: DragEvent<HTMLElement>) {
+  return Array.from(event.dataTransfer.types).includes('Files')
+}
+
+function isScrolledNearBottom(element: HTMLElement) {
+  return element.scrollHeight - element.scrollTop - element.clientHeight <= CHAT_BOTTOM_THRESHOLD_PX
+}
+
 function ProtocolSidebar({
   collapsed,
   managerRoot,
@@ -562,6 +628,7 @@ function ProtocolSidebar({
   statusDetails,
   snapshot,
   attachments,
+  onAttachmentPreview,
   filesPresent,
 }: {
   collapsed: boolean
@@ -570,6 +637,7 @@ function ProtocolSidebar({
   statusDetails: (typeof STATUS_DETAILS)[ProtocolStatus]
   snapshot: Snapshot | null
   attachments: AttachmentMeta[]
+  onAttachmentPreview: (attachment: AttachmentMeta) => void
   filesPresent: number
 }) {
   return (
@@ -610,7 +678,7 @@ function ProtocolSidebar({
 
         <div className="meta-group">
           <h4>Attachments</h4>
-          <AttachmentList attachments={attachments} />
+          <AttachmentList attachments={attachments} onPreview={onAttachmentPreview} />
         </div>
       </div>
     </aside>
@@ -640,7 +708,13 @@ function FileCard({
   )
 }
 
-function AttachmentList({ attachments }: { attachments: AttachmentMeta[] }) {
+function AttachmentList({
+  attachments,
+  onPreview,
+}: {
+  attachments: AttachmentMeta[]
+  onPreview: (attachment: AttachmentMeta) => void
+}) {
   if (attachments.length === 0) {
     return (
       <p className="empty-state compact">
@@ -658,14 +732,56 @@ function AttachmentList({ attachments }: { attachments: AttachmentMeta[] }) {
             <i className="ri-image-2-line" />
           </div>
           <div className="file-copy">
-            <a className="file-name" href={attachment.url} target="_blank" rel="noreferrer">
+            <button
+              type="button"
+              className="file-name attachment-preview-button"
+              onClick={() => onPreview(attachment)}
+            >
               {attachment.name}
-            </a>
+            </button>
             <div className="file-meta">{formatBytes(attachment.size)}</div>
           </div>
         </li>
       ))}
     </ul>
+  )
+}
+
+function AttachmentPreview({
+  attachment,
+  onClose,
+}: {
+  attachment: AttachmentMeta
+  onClose: () => void
+}) {
+  return (
+    <div className="preview-backdrop" role="presentation" onClick={onClose}>
+      <section
+        className="attachment-preview"
+        role="dialog"
+        aria-modal="true"
+        aria-label={attachment.name}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="preview-header">
+          <div className="preview-title">
+            <span>{attachment.name}</span>
+            <small>{formatBytes(attachment.size)}</small>
+          </div>
+          <div className="preview-actions">
+            <a href={attachment.url} target="_blank" rel="noreferrer" className="icon-btn" aria-label="Open image">
+              <i className="ri-external-link-line" aria-hidden="true" />
+            </a>
+            <button type="button" className="icon-btn" onClick={onClose} aria-label="Close preview">
+              <i className="ri-close-line" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+        <div className="preview-stage">
+          <img src={attachment.url} alt={attachment.name} />
+        </div>
+      </section>
+    </div>
   )
 }
 
@@ -710,6 +826,14 @@ function fileMeta(snapshot: Snapshot, fileName: ProtocolTextFile): string {
   }
 
   return `${formatBytes(meta.size)} - ${dateFormatter.format(new Date(meta.mtimeIso))}`
+}
+
+function formatMessageTime(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return ''
+  }
+  return dateFormatter.format(date)
 }
 
 function formatBytes(bytes: number): string {

@@ -52,11 +52,7 @@ while ($true) {
     $current = (Get-Content -LiteralPath $statusFile -Raw) -replace '\s', ''
   }
 
-  if (
-    $current -eq 'APPROVED' -or
-    $current -eq 'REVISION_REQUESTED' -or
-    $current -eq 'INSTRUCTION_RECEIVED'
-  ) {
+  if ($current -eq 'INSTRUCTION_RECEIVED') {
     Write-Output "STATUS_CHANGED: $current"
     exit 0
   }

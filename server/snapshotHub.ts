@@ -12,10 +12,12 @@ import {
   ATTACHMENTS_DIR_NAME,
   RUN_METADATA_FILE,
   appendAuditEvent,
+  appendAssistantReviewMessage,
   getManagerSnapshot,
   getRunPath,
   getRunSnapshot,
   isSafeRunId,
+  pathExists,
 } from './protocolStore'
 
 interface Client {
@@ -166,6 +168,12 @@ export class MultiRunSnapshotHub {
     }
 
     try {
+      if (eventName === 'unlink' && !(await pathExists(target.runPath))) {
+        return
+      }
+      if (target.protocolFile === 'status.txt' && eventName !== 'unlink') {
+        await this.appendReviewMessageIfWaiting(watchedPath, target.runPath)
+      }
       const payload = await this.createWatchPayload(eventName, watchedPath, target)
       await appendAuditEvent(target.runPath, target.eventType, payload)
     } catch (error) {
@@ -331,6 +339,19 @@ export class MultiRunSnapshotHub {
     }
 
     return true
+  }
+
+  private async appendReviewMessageIfWaiting(statusPath: string, runPath: string): Promise<void> {
+    try {
+      const status = (await fs.readFile(statusPath, 'utf8')).trim()
+      if (status === 'WAITING_FOR_REVIEW') {
+        await appendAssistantReviewMessage(runPath)
+      }
+    } catch (error) {
+      if (!isNodeError(error) || error.code !== 'ENOENT') {
+        throw error
+      }
+    }
   }
 }
 

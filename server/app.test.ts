@@ -7,7 +7,6 @@ import request from 'supertest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   LEGACY_RUN_ID,
-  MARKDOWN_RENDER_LIMIT_BYTES,
   MARKDOWN_WARN_BYTES,
   type ManagerSnapshot,
 } from '../src/shared/protocol'
@@ -68,13 +67,14 @@ describe('Codex Pro Max multi-run API', () => {
 
     const response = await request(appHandle.app)
       .post('/api/runs/run-a/action')
-      .send({ action: 'approve', instruction: 'Ship run A.' })
+      .send({ instruction: 'Ship run A.' })
       .expect(200)
 
     expect(response.body.snapshot.runId).toBe('run-a')
-    expect(response.body.snapshot.status).toBe('APPROVED')
+    expect(response.body.snapshot.status).toBe('INSTRUCTION_RECEIVED')
     await expect(fs.readFile(path.join(runA, 'instruction.txt'), 'utf8')).resolves.toBe('Ship run A.\n')
-    await expect(fs.readFile(path.join(runA, 'status.txt'), 'utf8')).resolves.toBe('APPROVED\n')
+    await expect(fs.readFile(path.join(runA, 'status.txt'), 'utf8')).resolves.toBe('INSTRUCTION_RECEIVED\n')
+    await expect(fs.readFile(path.join(runA, 'session.md'), 'utf8')).resolves.toContain('Ship run A.')
     await expect(fs.readFile(path.join(runB, 'instruction.txt'), 'utf8')).resolves.toBe('Do not touch.\n')
     await expect(fs.readFile(path.join(runB, 'status.txt'), 'utf8')).resolves.toBe('WAITING_FOR_REVIEW\n')
   })
@@ -110,7 +110,7 @@ describe('Codex Pro Max multi-run API', () => {
       writes.push(path.basename(filePath))
     })
 
-    await writeInstructionAndStatus(getRunPath(rootPath, 'run-a'), 'Order matters.', 'APPROVED', writer)
+    await writeInstructionAndStatus(getRunPath(rootPath, 'run-a'), 'Order matters.', 'INSTRUCTION_RECEIVED', writer)
 
     expect(writes).toEqual(['instruction.txt', 'status.txt'])
     expect(writer).toHaveBeenCalledTimes(2)
@@ -120,23 +120,33 @@ describe('Codex Pro Max multi-run API', () => {
     const runA = getRunPath(rootPath, 'run-a')
     await fs.mkdir(runA, { recursive: true })
     const output = 'a'.repeat(MARKDOWN_WARN_BYTES + 1)
-    const progress = 'b'.repeat(MARKDOWN_RENDER_LIMIT_BYTES + 20)
     await fs.writeFile(path.join(runA, 'output.md'), output, 'utf8')
-    await fs.writeFile(path.join(runA, 'progress.md'), progress, 'utf8')
     appHandle = createApp({ rootPath, startWatcher: false })
 
     const response = await request(appHandle.app).get('/api/runs/run-a/snapshot').expect(200)
 
     expect(response.body.outputMd).toHaveLength(output.length)
-    expect(Buffer.byteLength(response.body.progressMd, 'utf8')).toBe(MARKDOWN_RENDER_LIMIT_BYTES)
     expect(response.body.markdownSafety['output.md']).toMatchObject({
       warning: true,
       truncated: false,
     })
-    expect(response.body.markdownSafety['progress.md']).toMatchObject({
-      warning: true,
-      truncated: true,
-    })
+  })
+
+  it('maps legacy approval statuses out of snapshots', async () => {
+    const runA = getRunPath(rootPath, 'run-a')
+    const runB = getRunPath(rootPath, 'run-b')
+    await fs.mkdir(runA, { recursive: true })
+    await fs.mkdir(runB, { recursive: true })
+    await fs.writeFile(path.join(runA, 'status.txt'), 'APPROVED\n', 'utf8')
+    await fs.writeFile(path.join(runA, 'instruction.txt'), 'Ship it.\n', 'utf8')
+    await fs.writeFile(path.join(runB, 'status.txt'), 'REVISION_REQUESTED\n', 'utf8')
+    appHandle = createApp({ rootPath, startWatcher: false })
+
+    const runAResponse = await request(appHandle.app).get('/api/runs/run-a/snapshot').expect(200)
+    const runBResponse = await request(appHandle.app).get('/api/runs/run-b/snapshot').expect(200)
+
+    expect(runAResponse.body.status).toBe('INSTRUCTION_RECEIVED')
+    expect(runBResponse.body.status).toBe('IDLE')
   })
 
   it('rejects unsafe run ids', async () => {
@@ -144,23 +154,18 @@ describe('Codex Pro Max multi-run API', () => {
 
     const response = await request(appHandle.app)
       .post('/api/runs/bad%24id/action')
-      .send({ action: 'approve' })
+      .send({ instruction: 'Hello' })
       .expect(400)
 
     expect(response.body.ok).toBe(false)
   })
 
-  it('rejects revision and instruct actions without instructions', async () => {
+  it('rejects blank instructions', async () => {
     appHandle = createApp({ rootPath, startWatcher: false })
-
-    await request(appHandle.app)
-      .post('/api/runs/run-a/action')
-      .send({ action: 'revision', instruction: '   ' })
-      .expect(400)
 
     const response = await request(appHandle.app)
       .post('/api/runs/run-a/action')
-      .send({ action: 'instruct', instruction: '   ' })
+      .send({ instruction: '   ' })
       .expect(400)
 
     expect(response.body.error).toMatch(/require instruction text/i)
@@ -191,16 +196,18 @@ describe('Codex Pro Max multi-run API', () => {
 
     await request(appHandle.app)
       .post('/api/runs/run-a/action')
-      .send({ action: 'instruct', instruction: 'Continue from the latest checkpoint.' })
+      .send({ instruction: 'Continue from the latest checkpoint.' })
       .expect(200)
 
     const runA = getRunPath(rootPath, 'run-a')
     const userMessage = await readAuditEventUntil(runA, (event) => event.type === 'user.message')
     expect(userMessage).toMatchObject({
-      action: 'instruct',
       status: 'INSTRUCTION_RECEIVED',
       instruction: 'Continue from the latest checkpoint.',
     })
+    await expect(fs.readFile(path.join(runA, 'session.md'), 'utf8')).resolves.toContain(
+      'Continue from the latest checkpoint.',
+    )
 
     await fs.writeFile(path.join(runA, 'output.md'), '## Agent Output\n\nReady for review.', 'utf8')
 

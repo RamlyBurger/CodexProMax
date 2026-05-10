@@ -1,7 +1,7 @@
 import express, { type ErrorRequestHandler, type RequestHandler } from 'express'
 import multer from 'multer'
 import path from 'node:path'
-import type { ActionRequest, ProtocolStatus } from '../src/shared/protocol'
+import type { InstructionRequest } from '../src/shared/protocol'
 import { LEGACY_RUN_ID } from '../src/shared/protocol'
 import { HttpError } from './errors'
 import { MultiRunSnapshotHub } from './snapshotHub'
@@ -10,6 +10,7 @@ import {
   DEFAULT_API_PORT,
   MAX_UPLOAD_BYTES,
   appendAuditEvent,
+  appendChatMessage,
   deleteRun,
   ensureRunMetadata,
   getAttachmentsPath,
@@ -63,7 +64,7 @@ export function createApp(options: CreateAppOptions = {}): CodexProMaxApp {
 
   app.post('/api/runs/:runId/action', async (request, response) => {
     const runId = parseRunId(request.params.runId)
-    response.json(await handleAction(rootPath, hub, runId, request.body))
+    response.json(await handleInstruction(rootPath, hub, runId, request.body))
   })
 
   app.delete('/api/runs/:runId', async (request, response) => {
@@ -93,7 +94,7 @@ export function createApp(options: CreateAppOptions = {}): CodexProMaxApp {
   })
 
   app.post('/api/action', async (request, response) => {
-    response.json(await handleAction(rootPath, hub, LEGACY_RUN_ID, request.body))
+    response.json(await handleInstruction(rootPath, hub, LEGACY_RUN_ID, request.body))
   })
 
   app.post('/api/upload', upload.single('file'), uploadHandler(rootPath, hub, LEGACY_RUN_ID))
@@ -116,28 +117,27 @@ export function createApp(options: CreateAppOptions = {}): CodexProMaxApp {
   }
 }
 
-async function handleAction(
+async function handleInstruction(
   rootPath: string,
   hub: MultiRunSnapshotHub,
   runId: string,
   rawBody: unknown,
 ) {
   const runPath = getRunPath(rootPath, runId)
-  const body = parseActionRequest(rawBody)
-  const instruction = typeof body.instruction === 'string' ? body.instruction : ''
-  const nextStatus = statusForAction(body.action)
+  const body = parseInstructionRequest(rawBody)
+  const instruction = body.instruction
 
-  validateInstruction(body.action, instruction)
+  validateInstruction(instruction)
   await ensureRunMetadata(rootPath, runId)
-  await writeInstructionAndStatus(runPath, instruction, nextStatus)
+  await writeInstructionAndStatus(runPath, instruction, 'INSTRUCTION_RECEIVED')
+  await appendChatMessage(runPath, 'user', instruction)
   await appendAuditEvent(runPath, 'user.message', {
-    action: body.action,
-    status: nextStatus,
+    status: 'INSTRUCTION_RECEIVED',
     instruction,
     instructionBytes: Buffer.byteLength(instruction, 'utf8'),
   })
-  await appendAuditEvent(runPath, `action.${body.action}`, {
-    status: nextStatus,
+  await appendAuditEvent(runPath, 'instruction.sent', {
+    status: 'INSTRUCTION_RECEIVED',
     instructionPreview: createPreview(instruction),
     instructionBytes: Buffer.byteLength(instruction, 'utf8'),
     hasInstruction: instruction.trim().length > 0,
@@ -188,22 +188,17 @@ function uploadHandler(
   }
 }
 
-function parseActionRequest(value: unknown): ActionRequest {
+function parseInstructionRequest(value: unknown): InstructionRequest {
   if (!value || typeof value !== 'object') {
     throw new HttpError(400, 'Request body must be a JSON object.')
   }
 
-  const action = (value as Partial<ActionRequest>).action
-  if (action !== 'approve' && action !== 'revision' && action !== 'instruct') {
-    throw new HttpError(400, 'Action must be "approve", "revision", or "instruct".')
-  }
-
-  const instruction = (value as Partial<ActionRequest>).instruction
-  if (instruction !== undefined && typeof instruction !== 'string') {
+  const instruction = (value as Partial<InstructionRequest>).instruction
+  if (typeof instruction !== 'string') {
     throw new HttpError(400, 'Instruction must be a string.')
   }
 
-  return { action, instruction }
+  return { instruction }
 }
 
 function parseRunId(value: string | undefined): string {
@@ -228,21 +223,9 @@ function parseAttachmentName(value: string | undefined): string {
   return fileName
 }
 
-function statusForAction(action: ActionRequest['action']): ProtocolStatus {
-  return action === 'approve'
-    ? 'APPROVED'
-    : action === 'revision'
-      ? 'REVISION_REQUESTED'
-      : 'INSTRUCTION_RECEIVED'
-}
-
-function validateInstruction(action: ActionRequest['action'], instruction: string): void {
-  if (action === 'revision' && instruction.trim().length === 0) {
-    throw new HttpError(400, 'Revision requests require an instruction.')
-  }
-
-  if (action === 'instruct' && instruction.trim().length === 0) {
-    throw new HttpError(400, 'New instructions require instruction text.')
+function validateInstruction(instruction: string): void {
+  if (instruction.trim().length === 0) {
+    throw new HttpError(400, 'Instructions require instruction text.')
   }
 }
 
