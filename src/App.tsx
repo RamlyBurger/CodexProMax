@@ -187,9 +187,7 @@ function App() {
       currentDialog?.resolve(confirmed)
       return null
     })
-    if (!confirmed) {
-      restorePopupReturnFocus()
-    }
+    restorePopupReturnFocus()
   }, [])
 
   const runs = managerSnapshot?.runs ?? []
@@ -391,6 +389,7 @@ function App() {
 
   function handleCtrlEnterSendConfirm(dontShowAgain: boolean) {
     setCtrlEnterConfirmOpen(false)
+    restorePopupReturnFocus()
     if (dontShowAgain) {
       setConfirmCtrlEnterSend(false)
     }

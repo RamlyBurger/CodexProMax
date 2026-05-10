@@ -1162,6 +1162,7 @@ describe('App', () => {
     await getEventSource()
 
     const input = await screen.findByLabelText('Instruction')
+    input.focus()
     fireEvent.change(input, {
       target: { value: 'Send with shortcut.' },
     })
@@ -1186,6 +1187,7 @@ describe('App', () => {
         }),
       ),
     )
+    await waitFor(() => expect(input).toHaveFocus())
     expect(window.localStorage.getItem('codex-pro-max:confirm-ctrl-enter-send')).toBe('false')
   })
 
