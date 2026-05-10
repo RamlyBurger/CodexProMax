@@ -308,6 +308,13 @@ describe('App', () => {
       fireEvent.scroll(scrollPane)
 
       await waitFor(() =>
+        expect(within(sidebar).getByRole('button', { name: /User request 3/i })).toHaveClass('active'),
+      )
+
+      mockElementRect(within(scrollPane).getByText('User request 4').closest('article') as HTMLElement, { top: 150, bottom: 290 })
+      fireEvent.scroll(scrollPane)
+
+      await waitFor(() =>
         expect(within(sidebar).getByRole('button', { name: /User request 4/i })).toHaveClass('active'),
       )
 

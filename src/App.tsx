@@ -564,7 +564,8 @@ function App() {
     }
 
     const scrollRect = scrollElement.getBoundingClientRect()
-    const visibleThresholdY = scrollRect.bottom - 24
+    const activationOffset = Math.min(Math.max(scrollElement.clientHeight * 0.55, 96), 260)
+    const activeThresholdY = scrollRect.top + activationOffset
     let nextActiveId = userMessageOutlines[0].id
 
     for (const message of userMessageOutlines) {
@@ -573,7 +574,7 @@ function App() {
         continue
       }
 
-      if (element.getBoundingClientRect().top <= visibleThresholdY) {
+      if (element.getBoundingClientRect().top <= activeThresholdY) {
         nextActiveId = message.id
       } else {
         break
@@ -1581,15 +1582,7 @@ function UserMessageOutlineList({
   const [visibleActiveMessageId, setVisibleActiveMessageId] = useState<string | null>(activeMessageId)
   const latestOutline = outlines.length > 0 ? outlines[outlines.length - 1] : null
   const outlineScrollAnchor = latestOutline ? `${outlines.length}:${latestOutline.id}` : 'empty'
-
-  useLayoutEffect(() => {
-    const outlineList = outlineListRef.current
-    if (!outlineList || !outlinePinnedToBottomRef.current) {
-      return
-    }
-
-    outlineList.scrollTop = outlineList.scrollHeight
-  }, [outlineScrollAnchor])
+  const lastOutlineScrollAnchorRef = useRef(outlineScrollAnchor)
 
   useLayoutEffect(() => {
     if (!activeMessageId) {
@@ -1600,6 +1593,16 @@ function UserMessageOutlineList({
     const outlineList = outlineListRef.current
     const activeButton = outlineButtonRefs.current.get(activeMessageId)
     if (!outlineList || !activeButton) {
+      setVisibleActiveMessageId(activeMessageId)
+      return
+    }
+
+    if (lastOutlineScrollAnchorRef.current !== outlineScrollAnchor) {
+      setVisibleActiveMessageId(activeMessageId)
+      return
+    }
+
+    if (activeMessageId === latestOutline?.id) {
       setVisibleActiveMessageId(activeMessageId)
       return
     }
@@ -1617,7 +1620,23 @@ function UserMessageOutlineList({
 
     outlinePinnedToBottomRef.current = isScrolledNearBottom(outlineList)
     setVisibleActiveMessageId(activeMessageId)
-  }, [activeMessageId])
+  }, [activeMessageId, latestOutline?.id])
+
+  useLayoutEffect(() => {
+    const outlineList = outlineListRef.current
+    if (!outlineList) {
+      lastOutlineScrollAnchorRef.current = outlineScrollAnchor
+      return
+    }
+
+    if (!outlinePinnedToBottomRef.current) {
+      lastOutlineScrollAnchorRef.current = outlineScrollAnchor
+      return
+    }
+
+    outlineList.scrollTop = outlineList.scrollHeight
+    lastOutlineScrollAnchorRef.current = outlineScrollAnchor
+  }, [outlineScrollAnchor])
 
   function handleOutlineScroll(event: UIEvent<HTMLOListElement>) {
     outlinePinnedToBottomRef.current = isScrolledNearBottom(event.currentTarget)
