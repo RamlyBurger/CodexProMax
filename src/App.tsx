@@ -2986,7 +2986,7 @@ function AttachmentPreview({
   return (
     <div className="preview-backdrop" role="presentation" onClick={onClose}>
       <section
-        className="attachment-preview image-gallery-preview"
+        className={`attachment-preview image-gallery-preview ${showGalleryControls ? 'has-gallery-controls' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-label={attachment.name}
