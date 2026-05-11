@@ -1,5 +1,7 @@
 # Codex Pro Max
 
+![Codex Pro Max banner](public/codex-pro-max-banner.png)
+
 Codex Pro Max is a local human-in-the-loop inbox for Codex-style agents. It gives each Codex session its own run folder, lets the agent pause with a normal final-style conclusion, and lets the human send the next instruction from a single chat composer.
 
 The current design is intentionally small:
