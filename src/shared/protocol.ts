@@ -2,6 +2,7 @@ export const VALID_STATUSES = [
   'RUNNING',
   'WAITING_FOR_REVIEW',
   'INSTRUCTION_RECEIVED',
+  'STOPPED',
   'BLOCKED',
   'ERROR',
 ] as const
@@ -28,6 +29,10 @@ export const STATUS_DETAILS: Record<
   INSTRUCTION_RECEIVED: {
     owner: 'ui',
     help: 'UI-owned instruction state. The agent consumes instruction.txt, sets RUNNING, and continues unless told to stop.',
+  },
+  STOPPED: {
+    owner: 'agent',
+    help: 'Terminal state for a run closed from the Codex Pro Max UI.',
   },
   BLOCKED: {
     owner: 'agent',

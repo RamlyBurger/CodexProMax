@@ -366,6 +366,16 @@ export async function writeInstructionAndStatus(
   await writer(getProtocolPath(runPath, 'status.txt'), `${status}\n`)
 }
 
+export async function clearInstructionAndWriteStatus(
+  runPath: string,
+  status: ProtocolStatus,
+  writer: AtomicTextWriter = atomicWriteTextFile,
+): Promise<void> {
+  await fs.mkdir(runPath, { recursive: true })
+  await writer(getProtocolPath(runPath, 'instruction.txt'), '')
+  await writer(getProtocolPath(runPath, 'status.txt'), `${status}\n`)
+}
+
 function normalizeProtocolStatus(statusRaw: string, instruction: string): ProtocolStatus {
   if (isProtocolStatus(statusRaw)) {
     return statusRaw

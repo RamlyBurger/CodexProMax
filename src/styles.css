@@ -16,6 +16,7 @@
   --status-running: #0078d4;
   --status-success: #4caf50;
   --status-review: #d97706;
+  --status-stopped: #475569;
   --scrollbar-track: rgba(224, 242, 254, 0.55);
   --scrollbar-thumb: rgba(2, 132, 199, 0.32);
   --scrollbar-thumb-hover: rgba(3, 105, 161, 0.58);
@@ -289,6 +290,10 @@ button:disabled {
 
 .run-status-icon.run-status-waiting-for-review {
   color: var(--status-review);
+}
+
+.run-status-icon.run-status-stopped {
+  color: var(--status-stopped);
 }
 
 .run-status-icon.run-status-blocked {
@@ -672,6 +677,10 @@ button:disabled {
   color: var(--status-review);
 }
 
+.run-title.run-status-stopped {
+  color: var(--status-stopped);
+}
+
 .run-title.run-status-blocked {
   color: var(--purple);
 }
@@ -929,6 +938,11 @@ code,
 .status-instruction-received {
   background: var(--primary-soft);
   color: var(--primary-hover);
+}
+
+.status-stopped {
+  background: #f1f5f9;
+  color: var(--status-stopped);
 }
 
 .status-blocked {

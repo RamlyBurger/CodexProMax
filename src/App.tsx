@@ -73,6 +73,7 @@ const RUN_STATUS_ICONS: Record<ProtocolStatus, string> = {
   RUNNING: 'ri-loader-4-line',
   WAITING_FOR_REVIEW: 'ri-question-answer-line',
   INSTRUCTION_RECEIVED: 'ri-inbox-archive-line',
+  STOPPED: 'ri-stop-circle-line',
   BLOCKED: 'ri-forbid-2-line',
   ERROR: 'ri-error-warning-line',
 }

@@ -19,6 +19,7 @@ import {
   appendAuditEvent,
   appendChatMessage,
   clearConversationHistory,
+  clearInstructionAndWriteStatus,
   deleteAttachment,
   deleteRun,
   ensureRunMetadata,
@@ -140,7 +141,7 @@ export function createApp(options: CreateAppOptions = {}): CodexProMaxApp {
 
   app.post('/api/runs/:runId/stop', async (request, response) => {
     const runId = parseRunId(request.params.runId)
-    response.json(await writeRunInstruction(rootPath, hub, runId, STOP_SESSION_INSTRUCTION, 'session.stop.requested'))
+    response.json(await stopRun(rootPath, hub, runId))
   })
 
   app.post('/api/runs/:runId/upload', upload.single('file'), uploadHandler(rootPath, hub))
@@ -232,6 +233,35 @@ async function writeRunInstruction(
     instructionPreview: createPreview(instruction),
     instructionBytes: Buffer.byteLength(instruction, 'utf8'),
     hasInstruction: instruction.trim().length > 0,
+  })
+
+  await hub.broadcastSnapshot()
+  return {
+    ok: true,
+    snapshot: await hub.readRunSnapshot(runId),
+  }
+}
+
+async function stopRun(
+  rootPath: string,
+  hub: MultiRunSnapshotHub,
+  runId: string,
+) {
+  const runPath = getRunPath(rootPath, runId)
+
+  await ensureRunMetadata(rootPath, runId)
+  await clearInstructionAndWriteStatus(runPath, 'STOPPED')
+  await appendChatMessage(runPath, 'user', STOP_SESSION_INSTRUCTION)
+  await appendAuditEvent(runPath, 'user.message', {
+    status: 'STOPPED',
+    instruction: STOP_SESSION_INSTRUCTION,
+    instructionBytes: Buffer.byteLength(STOP_SESSION_INSTRUCTION, 'utf8'),
+  })
+  await appendAuditEvent(runPath, 'session.stop.requested', {
+    status: 'STOPPED',
+    instructionPreview: createPreview(STOP_SESSION_INSTRUCTION),
+    instructionBytes: Buffer.byteLength(STOP_SESSION_INSTRUCTION, 'utf8'),
+    hasInstruction: false,
   })
 
   await hub.broadcastSnapshot()

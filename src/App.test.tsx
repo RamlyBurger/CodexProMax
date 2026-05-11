@@ -125,8 +125,8 @@ beforeEach(() => {
           snapshot: snapshotFactory({
             runId: 'run-a',
             displayName: 'Run A',
-            status: 'INSTRUCTION_RECEIVED',
-            instruction: 'Stop this Codex Pro Max HITL session now.\n',
+            status: 'STOPPED',
+            instruction: '',
             messages: [
               {
                 id: 'stop-1',
