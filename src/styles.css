@@ -3304,16 +3304,20 @@ code,
 }
 
 .codex-live-from-user {
+  grid-template-columns: minmax(0, 1fr) 34px;
   margin-left: auto;
 }
 
 .codex-live-from-user .codex-live-avatar {
-  order: 2;
+  grid-column: 2;
+  grid-row: 1;
   background: #dbeafe;
   color: #2563eb;
 }
 
 .codex-live-from-user .codex-live-bubble {
+  grid-column: 1;
+  grid-row: 1;
   background: #f8fcff;
 }
 
@@ -3379,6 +3383,27 @@ code,
 .codex-live-message-heading span {
   color: var(--text-muted);
   font-size: 11px;
+}
+
+.codex-live-status {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary-hover);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.codex-live-status-failed {
+  background: #fff1f2;
+  color: var(--danger);
+}
+
+.codex-live-status-running {
+  background: #fef3c7;
+  color: var(--warning);
 }
 
 .codex-live-bubble p {
@@ -3872,6 +3897,10 @@ button:focus-visible,
 
   .codex-live-message {
     grid-template-columns: 30px minmax(0, 1fr);
+  }
+
+  .codex-live-from-user {
+    grid-template-columns: minmax(0, 1fr) 30px;
   }
 
   .codex-live-avatar {

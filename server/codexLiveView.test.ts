@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest'
-import { parseCodexLiveContext, parseCodexLiveRecord } from './codexLiveView'
+import fs from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+import { afterEach, describe, expect, it } from 'vitest'
+import { parseCodexLiveContext, parseCodexLiveRecord, readCodexLiveHistory } from './codexLiveView'
+
+afterEach(() => {
+  delete process.env.CODEX_SESSIONS_ROOT
+})
 
 describe('Codex live view JSONL parser', () => {
   it('extracts shell command text from function call records', () => {
@@ -16,7 +23,7 @@ describe('Codex live view JSONL parser', () => {
 
     expect(record).toMatchObject({
       kind: 'tool-call',
-      title: 'Shell command',
+      title: 'Git command',
       text: 'git push origin main',
       callId: 'call_1',
       status: 'running',
@@ -39,6 +46,102 @@ describe('Codex live view JSONL parser', () => {
       callId: 'call_1',
       status: 'failed',
     })
+  })
+
+  it('uses actual user message text from user_message events', () => {
+    const record = parseCodexLiveRecord(JSON.stringify({
+      timestamp: '2026-05-12T14:50:22.476Z',
+      type: 'event_msg',
+      payload: {
+        type: 'user_message',
+        message: 'Open Codex Live in a new tab.',
+      },
+    }), 2)
+
+    expect(record).toMatchObject({
+      kind: 'message',
+      title: 'User',
+      text: 'Open Codex Live in a new tab.',
+      status: 'completed',
+    })
+  })
+
+  it('hides empty reasoning events', () => {
+    const record = parseCodexLiveRecord(JSON.stringify({
+      timestamp: '2026-05-12T14:50:22.476Z',
+      type: 'response_item',
+      payload: {
+        type: 'reasoning',
+        summary: [],
+      },
+    }), 3)
+
+    expect(record).toBeNull()
+  })
+
+  it('unwraps custom tool output status', () => {
+    const record = parseCodexLiveRecord(JSON.stringify({
+      timestamp: '2026-05-12T14:51:33.712Z',
+      type: 'response_item',
+      payload: {
+        type: 'custom_tool_call_output',
+        call_id: 'call_patch',
+        output: JSON.stringify({
+          output: 'Success. Updated the following files:\nM C:\\Users\\ramly\\Desktop\\CodexProMax\\src\\App.tsx\n',
+          metadata: { exit_code: 0, duration_seconds: 0 },
+        }),
+      },
+    }), 4)
+
+    expect(record).toMatchObject({
+      kind: 'tool-output',
+      callId: 'call_patch',
+      text: 'Success. Updated the following files:\nM C:\\Users\\ramly\\Desktop\\CodexProMax\\src\\App.tsx\n',
+      status: 'completed',
+    })
+  })
+
+  it('combines shell calls and outputs into one record', async () => {
+    const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-live-'))
+    process.env.CODEX_SESSIONS_ROOT = rootPath
+    const relativePath = '2026/05/12/rollout-2026-05-12T09-05-49-session.jsonl'
+    const filePath = path.join(rootPath, ...relativePath.split('/'))
+    await fs.mkdir(path.dirname(filePath), { recursive: true })
+    await fs.writeFile(filePath, [
+      JSON.stringify({
+        timestamp: '2026-05-12T09:05:00.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          name: 'shell_command',
+          arguments: JSON.stringify({ command: 'npm test -- --run' }),
+          call_id: 'call_test',
+        },
+      }),
+      JSON.stringify({
+        timestamp: '2026-05-12T09:05:03.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call_output',
+          call_id: 'call_test',
+          output: 'Exit code: 0\nWall time: 1.0 seconds\nOutput:\nTest Files  4 passed (4)\nTests  88 passed (88)',
+        },
+      }),
+    ].join('\n'))
+
+    const id = Buffer.from(relativePath, 'utf8').toString('base64url')
+    const history = await readCodexLiveHistory(id)
+
+    expect(history.records).toHaveLength(1)
+    expect(history.records[0]).toMatchObject({
+      kind: 'tool-call',
+      title: 'Run tests',
+      status: 'completed',
+      callId: 'call_test',
+    })
+    expect(history.records[0].text).toContain('npm test -- --run')
+    expect(history.records[0].text).toContain('Result:')
+    expect(history.records[0].text).toContain('Test Files  4 passed')
   })
 
   it('extracts context usage from token count events', () => {

@@ -340,14 +340,27 @@ describe('App', () => {
     expect(screen.getByLabelText('Protocol details')).toHaveClass('collapsed')
   })
 
-  it('opens Codex Live as a page and keeps the latest record at the bottom', async () => {
+  it('opens Codex Live in a new tab from the root page', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+
     render(<App />)
     await getEventSource()
 
     fireEvent.click(await screen.findByRole('button', { name: /open codex live view/i }))
 
-    expect(window.location.pathname).toBe('/codex-live')
+    expect(openSpy).toHaveBeenCalledWith('/codex-live', '_blank', 'noopener,noreferrer')
+    expect(window.location.pathname).toBe('/')
     expect(screen.queryByRole('dialog', { name: /codex live view/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('main', { name: /codex live conversation/i })).not.toBeInTheDocument()
+
+    openSpy.mockRestore()
+  })
+
+  it('renders Codex Live as a page and keeps the latest record at the bottom', async () => {
+    window.history.replaceState(null, '', '/codex-live')
+
+    render(<App />)
+    await getEventSource()
 
     const livePage = await screen.findByRole('main', { name: /codex live conversation/i })
     expect(await within(livePage).findByText('Latest command')).toBeInTheDocument()
@@ -360,8 +373,8 @@ describe('App', () => {
     expect(articles[0]).toHaveTextContent('Thinking')
     expect(articles[0]).toHaveTextContent('Earlier reasoning')
     expect(articles[1]).toHaveTextContent('Shell command')
-    expect(articles[1]).toHaveTextContent('Running')
-    expect(articles[1].querySelector('details')).toBeInTheDocument()
+    expect(articles[1]).toHaveTextContent('Latest command')
+    expect(articles[1].querySelector('details')).not.toBeInTheDocument()
   })
 
   it('opens the left sidebar profile menu', async () => {

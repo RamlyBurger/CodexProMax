@@ -1292,8 +1292,7 @@ function App() {
   }
 
   function openCodexLivePage() {
-    window.history.pushState(null, '', '/codex-live')
-    setCodexLivePage(true)
+    window.open('/codex-live', '_blank', 'noopener,noreferrer')
   }
 
   function closeCodexLivePage() {
@@ -3755,6 +3754,11 @@ function CodexLiveRecordItem({ record }: { record: CodexLiveRecord }) {
             <strong>{codexLiveRecordTitle(record)}</strong>
             <span>{formatMessageTime(record.timestamp)}</span>
           </div>
+          {codexLiveStatusLabel(record) && (
+            <span className={`codex-live-status codex-live-status-${record.status}`}>
+              {codexLiveStatusLabel(record)}
+            </span>
+          )}
         </div>
         {visibleText && <p>{visibleText}</p>}
         {detailsText && (
@@ -3770,7 +3774,9 @@ function CodexLiveRecordItem({ record }: { record: CodexLiveRecord }) {
 
 function codexLiveRecordTitle(record: CodexLiveRecord) {
   if (record.kind === 'reasoning') return 'Thinking'
-  if (record.kind === 'tool-output') return record.status === 'failed' ? 'Tool failed' : 'Tool finished'
+  if (record.kind === 'tool-output' && record.title === 'Tool output') {
+    return record.status === 'failed' ? 'Tool failed' : 'Tool finished'
+  }
   return record.title
 }
 
@@ -3780,11 +3786,11 @@ function codexLiveVisibleText(record: CodexLiveRecord) {
   }
 
   if (record.kind === 'tool-output') {
-    return record.status === 'failed' ? summarizeFailedOutput(record.text) : 'Done'
+    return summarizeToolOutput(record)
   }
 
   if (record.kind === 'tool-call') {
-    return record.status === 'completed' ? 'Done' : 'Running'
+    return summarizeToolCall(record)
   }
 
   return record.title
@@ -3792,7 +3798,16 @@ function codexLiveVisibleText(record: CodexLiveRecord) {
 
 function codexLiveDetailsText(record: CodexLiveRecord) {
   if (record.kind === 'message' || record.kind === 'reasoning') return ''
+  if (record.kind === 'tool-call' && !record.text.includes('\n') && record.text.length <= 260) return ''
   return record.text.trim()
+}
+
+function codexLiveStatusLabel(record: CodexLiveRecord) {
+  if (record.kind !== 'tool-call' && record.kind !== 'tool-output') return ''
+  if (record.status === 'completed') return 'Finished'
+  if (record.status === 'failed') return 'Failed'
+  if (record.status === 'running') return 'Running'
+  return ''
 }
 
 function codexLiveKindIcon(kind: CodexLiveRecord['kind']) {
@@ -3808,6 +3823,10 @@ function trimLiveRecordText(value: string) {
 }
 
 function summarizeFailedOutput(value: string) {
+  if (/apply_patch verification failed|failed to find expected lines/i.test(value)) return 'Patch did not apply'
+  const failedTestMatch = value.match(/Test Files\s+(\d+)\s+failed[\s\S]*?Tests\s+(\d+)\s+failed/i)
+  if (failedTestMatch) return `Tests failed: ${failedTestMatch[1]} files, ${failedTestMatch[2]} tests`
+
   const lines = value
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -3815,6 +3834,85 @@ function summarizeFailedOutput(value: string) {
     .filter((line) => !/^Exit code:/i.test(line) && !/^Wall time:/i.test(line) && line !== 'Output:')
 
   return lines.at(-1) || 'Failed'
+}
+
+function summarizeToolCall(record: CodexLiveRecord) {
+  const { command, result } = splitToolResult(record.text)
+  if (!command) return record.status === 'completed' ? 'Completed' : 'Running'
+  if (record.title === 'Edit files') return summarizePatchFiles(command) || 'Editing files'
+  if (!result) return firstMeaningfulLine(command, 260)
+
+  const resultSummary = record.status === 'failed'
+    ? summarizeFailedOutput(result)
+    : summarizeToolOutput({ ...record, kind: 'tool-output', text: result })
+  return [firstMeaningfulLine(command, 260), resultSummary].filter(Boolean).join('\n')
+}
+
+function summarizeToolOutput(record: CodexLiveRecord) {
+  if (record.status === 'failed') return summarizeFailedOutput(record.text)
+  if (/^(Edited|Added|Deleted|Changed) file/.test(record.title)) {
+    return summarizePatchFiles(record.text) || 'Files updated'
+  }
+
+  const testMatch = record.text.match(/Test Files\s+(\d+)\s+passed[\s\S]*?Tests\s+(\d+)\s+passed/i)
+  if (testMatch) return `Tests passed: ${testMatch[1]} files, ${testMatch[2]} tests`
+  if (/built in\s+[\d.]+s/i.test(record.text) && /vite/i.test(record.text)) return 'Build passed'
+  if (/Exit code:\s*0/i.test(record.text)) {
+    const output = outputBody(record.text)
+    return firstMeaningfulLine(output, 220) || 'Completed'
+  }
+
+  return firstMeaningfulLine(record.text, 220) || 'Completed'
+}
+
+function summarizePatchFiles(value: string) {
+  const files = value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('***') && !line.startsWith('Success.'))
+    .filter((line) => !/^[+-]{3}\s/.test(line) && !/^@@/.test(line))
+    .filter((line) => !/^[+-]/.test(line))
+    .map((line) => line.replace(/^[AMD]\s+/, '').replace(/\\/g, '/'))
+    .map((line) => {
+      const codexIndex = line.lastIndexOf('/CodexProMax/')
+      if (codexIndex >= 0) return line.slice(codexIndex + '/CodexProMax/'.length)
+      const backgroundIndex = line.lastIndexOf('/Background Checker/')
+      if (backgroundIndex >= 0) return line.slice(backgroundIndex + '/Background Checker/'.length)
+      return line
+    })
+
+  return Array.from(new Set(files)).slice(0, 4).join('\n')
+}
+
+function outputBody(value: string) {
+  const marker = value.match(/Output:\s*\n([\s\S]*)/i)
+  return marker ? marker[1] : value
+}
+
+function splitToolResult(value: string) {
+  const marker = '\n\nResult:\n'
+  const index = value.indexOf(marker)
+  if (index < 0) return { command: value.trim(), result: '' }
+  return {
+    command: value.slice(0, index).trim(),
+    result: value.slice(index + marker.length).trim(),
+  }
+}
+
+function firstMeaningfulLine(value: string, maxLength: number) {
+  const line = value
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .find((item) =>
+      item
+      && !/^Exit code:/i.test(item)
+      && !/^Wall time:/i.test(item)
+      && item !== 'Output:'
+      && !/^[-\s|]*\d+%/.test(item),
+    )
+
+  if (!line) return ''
+  return line.length > maxLength ? `${line.slice(0, maxLength - 1)}...` : line
 }
 
 function formatLiveSessionTitle(session: CodexLiveSessionSummary) {

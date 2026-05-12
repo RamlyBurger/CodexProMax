@@ -230,7 +230,7 @@ export interface CodexLiveSessionSummary {
   sizeBytes: number
 }
 
-export type CodexLiveRecordKind = 'message' | 'tool-call' | 'tool-output' | 'reasoning' | 'event'
+export type CodexLiveRecordKind = 'message' | 'tool-call' | 'tool-output' | 'reasoning' | 'event' | 'action-group'
 
 export interface CodexLiveRecord {
   id: string
@@ -241,6 +241,7 @@ export interface CodexLiveRecord {
   text: string
   callId: string
   status: 'completed' | 'failed' | 'running' | 'unknown'
+  children?: CodexLiveRecord[]
 }
 
 export interface CodexLiveContextUsage {

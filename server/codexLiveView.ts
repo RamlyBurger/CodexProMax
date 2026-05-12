@@ -69,6 +69,7 @@ export async function readCodexLiveHistory(
   }
   lines = lines.filter((line) => line.trim()).slice(-recordLimit)
   const records: CodexLiveRecord[] = []
+  const callsById = new Map<string, CodexLiveRecord>()
   let context: CodexLiveContextUsage | null = null
 
   lines.forEach((line, index) => {
@@ -77,8 +78,25 @@ export async function readCodexLiveHistory(
       context = nextContext
     }
 
-    const record = parseCodexLiveRecord(line, index)
+    let record = parseCodexLiveRecord(line, index)
     if (record) {
+      if (record.kind === 'tool-call' && record.callId) {
+        callsById.set(record.callId, record)
+        if (isPatchCall(record)) return
+        records.push(record)
+        return
+      }
+      if (record.kind === 'tool-output' && record.callId) {
+        const call = callsById.get(record.callId)
+        if (call) {
+          if (isPatchCall(call)) {
+            records.push(enrichToolOutput(record, call))
+          } else {
+            mergeToolOutputIntoCall(call, record)
+          }
+          return
+        }
+      }
       records.push(record)
     }
   })
@@ -87,7 +105,7 @@ export async function readCodexLiveHistory(
     ok: true,
     rootPath,
     session: toSessionSummary(rootPath, filePath, stats),
-    records,
+    records: groupActionRuns(records),
     context,
     tailBytes: length,
     totalSizeBytes: stats.size,
@@ -159,13 +177,16 @@ export function parseCodexLiveRecord(line: string, index: number): CodexLiveReco
 
     if (payload.type === 'function_call') {
       const args = safeJson(payload.arguments)
+      const command = typeof args?.command === 'string' ? args.command : String(payload.arguments || '')
       return makeRecord({
         id,
         index,
         timestamp,
         kind: 'tool-call',
-        title: payload.name === 'shell_command' ? 'Shell command' : humanize(String(payload.name || 'tool call')),
-        text: typeof args?.command === 'string' ? args.command : String(payload.arguments || ''),
+        title: payload.name === 'shell_command'
+          ? shellCommandTitle(command)
+          : humanize(String(payload.name || 'tool call')),
+        text: command,
         callId: String(payload.call_id || ''),
         status: 'running',
       })
@@ -186,12 +207,13 @@ export function parseCodexLiveRecord(line: string, index: number): CodexLiveReco
     }
 
     if (payload.type === 'custom_tool_call') {
+      const name = String(payload.name || 'tool call')
       return makeRecord({
         id,
         index,
         timestamp,
         kind: 'tool-call',
-        title: humanize(String(payload.name || 'tool call')),
+        title: name === 'apply_patch' ? 'Edit files' : humanize(name),
         text: String(payload.input || ''),
         callId: String(payload.call_id || ''),
         status: String(payload.status || '') === 'completed' ? 'completed' : 'running',
@@ -199,7 +221,7 @@ export function parseCodexLiveRecord(line: string, index: number): CodexLiveReco
     }
 
     if (payload.type === 'custom_tool_call_output') {
-      const text = String(payload.output || '')
+      const text = customToolOutputText(payload.output)
       return makeRecord({
         id,
         index,
@@ -208,18 +230,20 @@ export function parseCodexLiveRecord(line: string, index: number): CodexLiveReco
         title: 'Tool output',
         text,
         callId: String(payload.call_id || ''),
-        status: outputStatus(text),
+        status: outputStatus(payload.output),
       })
     }
 
     if (payload.type === 'reasoning') {
+      const text = reasoningText(payload.summary)
+      if (!text.trim()) return null
       return makeRecord({
         id,
         index,
         timestamp,
         kind: 'reasoning',
         title: 'Thinking',
-        text: reasoningText(payload.summary),
+        text,
         status: 'running',
       })
     }
@@ -227,6 +251,17 @@ export function parseCodexLiveRecord(line: string, index: number): CodexLiveReco
 
   if (record.type === 'event_msg') {
     if (payload.type === 'agent_message' || payload.type === 'token_count') return null
+    if (payload.type === 'user_message') {
+      return makeRecord({
+        id,
+        index,
+        timestamp,
+        kind: 'message',
+        title: 'User',
+        text: String(payload.message || ''),
+        status: 'completed',
+      })
+    }
     return makeRecord({
       id,
       index,
@@ -322,6 +357,166 @@ function makeRecord(record: Omit<CodexLiveRecord, 'timestamp' | 'callId'> & Part
   }
 }
 
+function isPatchCall(record: CodexLiveRecord) {
+  return record.kind === 'tool-call' && record.title === 'Edit files'
+}
+
+function enrichToolOutput(record: CodexLiveRecord, call: CodexLiveRecord): CodexLiveRecord {
+  if (isPatchCall(call)) {
+    const patchSummary = summarizePatchChange(call.text, record.text)
+    return {
+      ...record,
+      title: record.status === 'completed' ? patchSummary.title : 'Patch failed',
+      text: [patchSummary.files.join('\n'), record.text].filter(Boolean).join('\n\n'),
+    }
+  }
+
+  if (call.kind === 'tool-call') {
+    return {
+      ...record,
+      title: `${call.title} result`,
+    }
+  }
+
+  return record
+}
+
+function mergeToolOutputIntoCall(call: CodexLiveRecord, output: CodexLiveRecord) {
+  call.status = output.status
+  call.text = `${call.text.trim()}\n\nResult:\n${output.text.trim()}`
+}
+
+function groupActionRuns(records: CodexLiveRecord[]) {
+  const grouped: CodexLiveRecord[] = []
+  let actions: CodexLiveRecord[] = []
+
+  function flushActions() {
+    if (actions.length === 0) return
+    if (actions.length === 1) {
+      grouped.push(actions[0])
+    } else {
+      grouped.push(makeRecord({
+        id: `actions-${actions[0].id}-${actions.length}`,
+        index: actions[0].index,
+        timestamp: actions[0].timestamp,
+        kind: 'action-group',
+        title: `${actions.length} action${actions.length === 1 ? '' : 's'}`,
+        text: actions.map((action) => action.title).join('\n'),
+        status: actionGroupStatus(actions),
+        children: actions,
+      }))
+    }
+    actions = []
+  }
+
+  for (const record of records) {
+    if (isActionRecord(record)) {
+      actions.push(record)
+    } else {
+      flushActions()
+      grouped.push(record)
+    }
+  }
+
+  flushActions()
+  return grouped
+}
+
+function isActionRecord(record: CodexLiveRecord) {
+  return record.kind === 'tool-call' || record.kind === 'tool-output'
+}
+
+function actionGroupStatus(actions: CodexLiveRecord[]): CodexLiveRecord['status'] {
+  if (actions.some((action) => action.status === 'failed')) return 'failed'
+  if (actions.some((action) => action.status === 'running')) return 'running'
+  if (actions.every((action) => action.status === 'completed')) return 'completed'
+  return 'unknown'
+}
+
+function summarizePatchChange(input: string, output: string) {
+  const files = patchFilesFromText(input)
+  if (files.length === 0) {
+    files.push(...patchFilesFromText(output))
+  }
+
+  const counts = files.reduce((nextCounts, item) => {
+    nextCounts[item.action] += 1
+    return nextCounts
+  }, { add: 0, delete: 0, update: 0 })
+  const total = counts.add + counts.delete + counts.update
+  const uniqueFiles = Array.from(new Set(files.map((item) => compactFilePath(item.file))))
+
+  if (total === 0) {
+    return { title: 'Edited files', files: uniqueFiles }
+  }
+
+  if (counts.add === 0 && counts.delete === 0) {
+    return { title: pluralize('Edited file', counts.update), files: uniqueFiles }
+  }
+  if (counts.update === 0 && counts.delete === 0) {
+    return { title: pluralize('Added file', counts.add), files: uniqueFiles }
+  }
+  if (counts.update === 0 && counts.add === 0) {
+    return { title: pluralize('Deleted file', counts.delete), files: uniqueFiles }
+  }
+
+  return { title: pluralize('Changed file', total), files: uniqueFiles }
+}
+
+function patchFilesFromText(value: string) {
+  const files: Array<{ action: 'add' | 'delete' | 'update'; file: string }> = []
+  const patchPattern = /^\*\*\* (Add|Delete|Update) File:\s*(.+)$/gm
+  let patchMatch
+  while ((patchMatch = patchPattern.exec(value)) !== null) {
+    const action = patchMatch[1] === 'Add' ? 'add' : patchMatch[1] === 'Delete' ? 'delete' : 'update'
+    files.push({ action, file: patchMatch[2].trim() })
+  }
+
+  const outputPattern = /^[ \t]*([AMD])\s+(.+)$/gm
+  let outputMatch
+  while ((outputMatch = outputPattern.exec(value)) !== null) {
+    const action = outputMatch[1] === 'A' ? 'add' : outputMatch[1] === 'D' ? 'delete' : 'update'
+    files.push({ action, file: outputMatch[2].trim() })
+  }
+
+  return files
+}
+
+function compactFilePath(value: string) {
+  const normalized = value.replace(/\\/g, '/')
+  const marker = '/CodexProMax/'
+  const markerIndex = normalized.lastIndexOf(marker)
+  if (markerIndex >= 0) return normalized.slice(markerIndex + marker.length)
+  const backgroundMarker = '/Background Checker/'
+  const backgroundIndex = normalized.lastIndexOf(backgroundMarker)
+  if (backgroundIndex >= 0) return normalized.slice(backgroundIndex + backgroundMarker.length)
+  return normalized
+}
+
+function pluralize(singular: string, count: number) {
+  const [verb, noun] = singular.split(' ')
+  return `${verb} ${count} ${noun}${count === 1 ? '' : 's'}`
+}
+
+function shellCommandTitle(command: string) {
+  const normalized = command.trim().toLowerCase()
+  if (normalized.startsWith('npm test')) return 'Run tests'
+  if (normalized.startsWith('npm run build')) return 'Build app'
+  if (normalized.startsWith('git ')) return 'Git command'
+  if (normalized.includes('select-string') || normalized.startsWith('rg ')) return 'Search code'
+  if (normalized.includes('get-content')) return 'Read file'
+  if (normalized.includes('invoke-restmethod')) return 'Check API'
+  if (
+    normalized.includes('start-process')
+    || normalized.includes('stop-process')
+    || normalized.includes('get-nettcpconnection')
+    || normalized.includes('get-ciminstance')
+  ) {
+    return 'Manage server'
+  }
+  return 'Shell command'
+}
+
 function responseMessageText(content: unknown) {
   if (!Array.isArray(content)) return ''
   return content
@@ -349,8 +544,27 @@ function safeJson(value: unknown): Record<string, unknown> | null {
   }
 }
 
-function outputStatus(output: string): CodexLiveRecord['status'] {
-  const match = output.match(/Exit code:\s*(\d+)/i)
+function customToolOutputText(value: unknown) {
+  const parsed = safeJson(value)
+  if (typeof parsed?.output === 'string') return parsed.output
+  return String(value || '')
+}
+
+function outputStatus(output: unknown): CodexLiveRecord['status'] {
+  const parsed = safeJson(output)
+  const exitCode = parsed?.metadata
+    && typeof parsed.metadata === 'object'
+    && !Array.isArray(parsed.metadata)
+    && 'exit_code' in parsed.metadata
+      ? Number((parsed.metadata as Record<string, unknown>).exit_code)
+      : null
+  if (exitCode !== null && Number.isFinite(exitCode)) {
+    return exitCode === 0 ? 'completed' : 'failed'
+  }
+
+  const outputText = typeof parsed?.output === 'string' ? parsed.output : String(output || '')
+  if (/apply_patch verification failed|failed to find expected lines/i.test(outputText)) return 'failed'
+  const match = outputText.match(/Exit code:\s*(\d+)/i)
   if (!match) return 'unknown'
   return Number(match[1]) === 0 ? 'completed' : 'failed'
 }
