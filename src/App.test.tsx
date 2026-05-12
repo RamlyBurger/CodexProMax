@@ -122,9 +122,9 @@ beforeEach(() => {
               timestamp: '2026-05-12T09:22:00.000Z',
               kind: 'tool-call',
               title: 'Shell command',
-              text: 'Latest command',
+              text: "Get-Content -Path 'src\\App.tsx'\nSelect-Object -First 5\n\nResult:\nExit code: 0\nWall time: 0.1 seconds\nOutput:\nLoaded App.tsx",
               callId: 'call-latest',
-              status: 'running',
+              status: 'completed',
             },
           ],
           context: {
@@ -363,7 +363,10 @@ describe('App', () => {
     await getEventSource()
 
     const livePage = await screen.findByRole('main', { name: /codex live conversation/i })
-    expect(await within(livePage).findByText('Latest command')).toBeInTheDocument()
+    expect(await within(livePage).findByText(
+      "Get-Content -Path 'src\\App.tsx' Select-Object -First 5",
+      { selector: '.codex-live-command-details summary span' },
+    )).toBeInTheDocument()
     expect(within(livePage).getByLabelText('Context limit')).toHaveTextContent('67.9K / 258.4K')
     expect(within(livePage).getByLabelText('Context limit')).toHaveTextContent('26%')
     expect(screen.queryByText(/Showing newest records/i)).not.toBeInTheDocument()
@@ -373,8 +376,19 @@ describe('App', () => {
     expect(articles[0]).toHaveTextContent('Thinking')
     expect(articles[0]).toHaveTextContent('Earlier reasoning')
     expect(articles[1]).toHaveTextContent('Shell command')
-    expect(articles[1]).toHaveTextContent('Latest command')
-    expect(articles[1].querySelector('details')).not.toBeInTheDocument()
+    const commandDetails = articles[1].querySelector('details.codex-live-command-details')
+    expect(commandDetails).toBeInTheDocument()
+    if (!commandDetails) throw new Error('Expected command details')
+    const commandSummary = commandDetails.querySelector('summary')
+    if (!commandSummary) throw new Error('Expected command summary')
+    expect(commandSummary).toHaveTextContent("Get-Content -Path 'src\\App.tsx' Select-Object -First 5")
+    expect(commandSummary?.textContent).not.toContain('\n')
+    expect(commandDetails).not.toHaveAttribute('open')
+    expect(commandDetails.querySelector('pre')?.textContent).toContain("Get-Content -Path 'src\\App.tsx'\nSelect-Object -First 5")
+
+    fireEvent.click(commandSummary)
+
+    expect(commandDetails).toHaveAttribute('open')
   })
 
   it('opens the left sidebar profile menu', async () => {

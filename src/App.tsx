@@ -3743,6 +3743,7 @@ function CodexLiveRecordItem({ record }: { record: CodexLiveRecord }) {
 
   const visibleText = codexLiveVisibleText(record)
   const detailsText = codexLiveDetailsText(record)
+  const commandDetails = codexLiveShellCommandDetails(record)
   const fromUser = record.kind === 'message' && record.title.toLowerCase() === 'user'
 
   return (
@@ -3762,8 +3763,25 @@ function CodexLiveRecordItem({ record }: { record: CodexLiveRecord }) {
             </span>
           )}
         </div>
-        {visibleText && <p>{visibleText}</p>}
-        {detailsText && (
+        {commandDetails ? (
+          <details className="codex-live-command-details">
+            <summary>
+              <i className="ri-arrow-right-s-line" aria-hidden="true" />
+              <span>{commandDetails.preview}</span>
+            </summary>
+            <div className="codex-live-command-expanded">
+              <strong>Command</strong>
+              <pre>{trimLiveRecordText(commandDetails.command)}</pre>
+              {commandDetails.result && (
+                <>
+                  <strong>Result</strong>
+                  <pre>{trimLiveRecordText(commandDetails.result)}</pre>
+                </>
+              )}
+            </div>
+          </details>
+        ) : visibleText && <p>{visibleText}</p>}
+        {!commandDetails && detailsText && (
           <details className="codex-live-details">
             <summary>Details</summary>
             <pre>{trimLiveRecordText(detailsText)}</pre>
@@ -3776,6 +3794,7 @@ function CodexLiveRecordItem({ record }: { record: CodexLiveRecord }) {
 
 function CodexLiveActionGroup({ record }: { record: CodexLiveRecord }) {
   const children = record.children ?? []
+  const groupTitle = codexLiveActionGroupTitle(children)
 
   return (
     <article className="codex-live-message codex-live-action-group">
@@ -3786,7 +3805,7 @@ function CodexLiveActionGroup({ record }: { record: CodexLiveRecord }) {
         <details className="codex-live-action-group-details">
           <summary>
             <span>
-              <strong>{children.length} action{children.length === 1 ? '' : 's'}</strong>
+              <strong>{groupTitle}</strong>
               <small>{formatMessageTime(record.timestamp)}</small>
             </span>
             {codexLiveStatusLabel(record) && (
@@ -3832,6 +3851,7 @@ function codexLiveVisibleText(record: CodexLiveRecord) {
 function codexLiveDetailsText(record: CodexLiveRecord) {
   if (record.kind === 'action-group') return ''
   if (record.kind === 'message' || record.kind === 'reasoning') return ''
+  if (codexLiveShellCommandDetails(record)) return ''
   if (record.kind === 'tool-call' && !record.text.includes('\n') && record.text.length <= 260) return ''
   return record.text.trim()
 }
@@ -3855,6 +3875,46 @@ function codexLiveKindIcon(kind: CodexLiveRecord['kind']) {
 
 function trimLiveRecordText(value: string) {
   return value.length > 12_000 ? `${value.slice(0, 12_000)}\n... truncated in live view ...` : value
+}
+
+function codexLiveActionGroupTitle(children: CodexLiveRecord[]) {
+  const commandCount = children.filter((child) => codexLiveShellCommandDetails(child)).length
+  if (commandCount > 0 && commandCount === children.length) {
+    return `Ran ${commandCount} command${commandCount === 1 ? '' : 's'}`
+  }
+  return `${children.length} action${children.length === 1 ? '' : 's'}`
+}
+
+function codexLiveShellCommandDetails(record: CodexLiveRecord) {
+  if (record.kind !== 'tool-call' || !isCodexLiveShellCommandTitle(record.title)) return null
+  const { command, result } = splitToolResult(record.text)
+  const trimmedCommand = command.trim()
+  if (!trimmedCommand) return null
+
+  return {
+    command: trimmedCommand,
+    result: result.trim(),
+    preview: compactCommandPreview(trimmedCommand, 180),
+  }
+}
+
+function isCodexLiveShellCommandTitle(title: string) {
+  return [
+    'Shell command',
+    'Run tests',
+    'Build app',
+    'Git command',
+    'Search code',
+    'Read file',
+    'Check API',
+    'Manage server',
+  ].includes(title)
+}
+
+function compactCommandPreview(value: string, maxLength: number) {
+  const line = value.replace(/\s+/g, ' ').trim()
+  if (!line) return ''
+  return line.length > maxLength ? `${line.slice(0, maxLength - 1)}...` : line
 }
 
 function summarizeFailedOutput(value: string) {
