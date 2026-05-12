@@ -3347,6 +3347,11 @@ code,
   color: var(--purple);
 }
 
+.codex-live-action-group .codex-live-avatar {
+  background: #e0f2fe;
+  color: var(--primary);
+}
+
 .codex-live-bubble {
   min-width: 0;
   display: grid;
@@ -3404,6 +3409,54 @@ code,
 .codex-live-status-running {
   background: #fef3c7;
   color: var(--warning);
+}
+
+.codex-live-action-group-details {
+  min-width: 0;
+}
+
+.codex-live-action-group-details > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.codex-live-action-group-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.codex-live-action-group-details > summary > span:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.codex-live-action-group-details strong {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-live-action-group-details small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.codex-live-group-items {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.codex-live-group-items .codex-live-message {
+  width: 100%;
 }
 
 .codex-live-bubble p {

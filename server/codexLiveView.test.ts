@@ -144,6 +144,66 @@ describe('Codex live view JSONL parser', () => {
     expect(history.records[0].text).toContain('Test Files  4 passed')
   })
 
+  it('groups consecutive actions without a message between them', async () => {
+    const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-live-'))
+    process.env.CODEX_SESSIONS_ROOT = rootPath
+    const relativePath = '2026/05/12/rollout-2026-05-12T09-06-49-session.jsonl'
+    const filePath = path.join(rootPath, ...relativePath.split('/'))
+    await fs.mkdir(path.dirname(filePath), { recursive: true })
+    await fs.writeFile(filePath, [
+      JSON.stringify({
+        timestamp: '2026-05-12T09:06:00.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          name: 'shell_command',
+          arguments: JSON.stringify({ command: 'npm test -- --run' }),
+          call_id: 'call_test',
+        },
+      }),
+      JSON.stringify({
+        timestamp: '2026-05-12T09:06:01.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call_output',
+          call_id: 'call_test',
+          output: 'Exit code: 0\nWall time: 1.0 seconds\nOutput:\nTest Files  4 passed (4)\nTests  88 passed (88)',
+        },
+      }),
+      JSON.stringify({
+        timestamp: '2026-05-12T09:06:02.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          name: 'shell_command',
+          arguments: JSON.stringify({ command: 'npm run build' }),
+          call_id: 'call_build',
+        },
+      }),
+      JSON.stringify({
+        timestamp: '2026-05-12T09:06:03.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call_output',
+          call_id: 'call_build',
+          output: 'Exit code: 0\nWall time: 1.0 seconds\nOutput:\nvite v7.3.3 building client environment for production...\n✓ built in 2.5s',
+        },
+      }),
+    ].join('\n'))
+
+    const id = Buffer.from(relativePath, 'utf8').toString('base64url')
+    const history = await readCodexLiveHistory(id)
+
+    expect(history.records).toHaveLength(1)
+    expect(history.records[0]).toMatchObject({
+      kind: 'action-group',
+      title: '2 actions',
+      status: 'completed',
+    })
+    expect(history.records[0].children).toHaveLength(2)
+    expect(history.records[0].children?.map((record) => record.title)).toEqual(['Run tests', 'Build app'])
+  })
+
   it('extracts context usage from token count events', () => {
     const context = parseCodexLiveContext(JSON.stringify({
       timestamp: '2026-05-12T09:29:29.803Z',

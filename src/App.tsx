@@ -3739,6 +3739,8 @@ function CodexLiveContextMeter({ usage }: { usage: NonNullable<CodexLiveHistoryR
 }
 
 function CodexLiveRecordItem({ record }: { record: CodexLiveRecord }) {
+  if (record.kind === 'action-group') return <CodexLiveActionGroup record={record} />
+
   const visibleText = codexLiveVisibleText(record)
   const detailsText = codexLiveDetailsText(record)
   const fromUser = record.kind === 'message' && record.title.toLowerCase() === 'user'
@@ -3772,6 +3774,36 @@ function CodexLiveRecordItem({ record }: { record: CodexLiveRecord }) {
   )
 }
 
+function CodexLiveActionGroup({ record }: { record: CodexLiveRecord }) {
+  const children = record.children ?? []
+
+  return (
+    <article className="codex-live-message codex-live-action-group">
+      <div className="codex-live-avatar" aria-hidden="true">
+        <i className={codexLiveKindIcon(record.kind)} />
+      </div>
+      <div className="codex-live-bubble">
+        <details className="codex-live-action-group-details">
+          <summary>
+            <span>
+              <strong>{children.length} action{children.length === 1 ? '' : 's'}</strong>
+              <small>{formatMessageTime(record.timestamp)}</small>
+            </span>
+            {codexLiveStatusLabel(record) && (
+              <span className={`codex-live-status codex-live-status-${record.status}`}>
+                {codexLiveStatusLabel(record)}
+              </span>
+            )}
+          </summary>
+          <div className="codex-live-group-items">
+            {children.map((child) => <CodexLiveRecordItem key={child.id} record={child} />)}
+          </div>
+        </details>
+      </div>
+    </article>
+  )
+}
+
 function codexLiveRecordTitle(record: CodexLiveRecord) {
   if (record.kind === 'reasoning') return 'Thinking'
   if (record.kind === 'tool-output' && record.title === 'Tool output') {
@@ -3781,6 +3813,7 @@ function codexLiveRecordTitle(record: CodexLiveRecord) {
 }
 
 function codexLiveVisibleText(record: CodexLiveRecord) {
+  if (record.kind === 'action-group') return ''
   if (record.kind === 'message' || record.kind === 'reasoning') {
     return record.text.trim() || (record.kind === 'reasoning' ? 'Thinking' : '')
   }
@@ -3797,13 +3830,14 @@ function codexLiveVisibleText(record: CodexLiveRecord) {
 }
 
 function codexLiveDetailsText(record: CodexLiveRecord) {
+  if (record.kind === 'action-group') return ''
   if (record.kind === 'message' || record.kind === 'reasoning') return ''
   if (record.kind === 'tool-call' && !record.text.includes('\n') && record.text.length <= 260) return ''
   return record.text.trim()
 }
 
 function codexLiveStatusLabel(record: CodexLiveRecord) {
-  if (record.kind !== 'tool-call' && record.kind !== 'tool-output') return ''
+  if (record.kind !== 'tool-call' && record.kind !== 'tool-output' && record.kind !== 'action-group') return ''
   if (record.status === 'completed') return 'Finished'
   if (record.status === 'failed') return 'Failed'
   if (record.status === 'running') return 'Running'
@@ -3811,6 +3845,7 @@ function codexLiveStatusLabel(record: CodexLiveRecord) {
 }
 
 function codexLiveKindIcon(kind: CodexLiveRecord['kind']) {
+  if (kind === 'action-group') return 'ri-stack-line'
   if (kind === 'tool-call') return 'ri-terminal-box-line'
   if (kind === 'tool-output') return 'ri-checkbox-circle-line'
   if (kind === 'reasoning') return 'ri-loader-4-line'
