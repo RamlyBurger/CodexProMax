@@ -631,6 +631,7 @@ describe('App', () => {
     await getEventSource()
 
     const thinking = await screen.findByTestId('ai-thinking-process')
+    expect(thinking.querySelectorAll('.ai-thinking-label-dots span')).toHaveLength(3)
     expect(thinking).toHaveTextContent('Checking the implementation path.')
     expect(thinking).not.toHaveTextContent('Raw reasoning should stay hidden')
     expect(thinking).not.toHaveTextContent('Tool output should stay hidden')

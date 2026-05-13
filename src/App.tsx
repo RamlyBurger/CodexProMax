@@ -2212,7 +2212,14 @@ function AiThinkingMessage({ records }: { records: CodexLiveRecord[] }) {
       <ProfileAvatar type="bot" />
       <div className="message-content">
         <div className="label-row message-label-row">
-          <span className="label-super">Thinking</span>
+          <span className="label-super ai-thinking-label" aria-label="Thinking">
+            Thinking
+            <span className="ai-thinking-label-dots" aria-hidden="true">
+              <span>.</span>
+              <span>.</span>
+              <span>.</span>
+            </span>
+          </span>
         </div>
         <div className="ai-thinking-bubble">
           <MarkdownPanel
