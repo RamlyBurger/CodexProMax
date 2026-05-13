@@ -26,6 +26,47 @@ function Write-AtomicTextNoBom([string]$Path, [string]$Value) {
   Move-Item -LiteralPath $tmp -Destination $Path -Force
 }
 
+function Get-PositiveEnvInt([string]$Name, [int]$DefaultValue) {
+  $raw = [System.Environment]::GetEnvironmentVariable($Name)
+  if ([string]::IsNullOrWhiteSpace($raw)) { return $DefaultValue }
+
+  $parsed = 0
+  if ([int]::TryParse($raw, [ref]$parsed) -and $parsed -gt 0) {
+    return $parsed
+  }
+
+  return $DefaultValue
+}
+
+function Enter-RunStateLock([string]$Path) {
+  $lockPath = Join-Path $Path "run_state.lock"
+  $timeoutSeconds = Get-PositiveEnvInt "CODEX_PRO_MAX_LOCK_TIMEOUT_SECONDS" 30
+  $startedAt = [System.Diagnostics.Stopwatch]::StartNew()
+
+  while ($true) {
+    try {
+      $stream = [System.IO.File]::Open($lockPath, [System.IO.FileMode]::OpenOrCreate, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+      $stream.SetLength(0)
+      $lockText = "pid=$PID`nstartedAt=$((Get-Date).ToUniversalTime().ToString('o'))`nscript=wait_for_review.ps1`n"
+      $lockBytes = $script:Utf8NoBom.GetBytes($lockText)
+      $stream.Write($lockBytes, 0, $lockBytes.Length)
+      $stream.Flush()
+      return $stream
+    } catch [System.IO.IOException] {
+      if ($startedAt.Elapsed.TotalSeconds -ge $timeoutSeconds) {
+        throw "Timed out waiting for run state lock in $Path."
+      }
+      Start-Sleep -Milliseconds 100
+    }
+  }
+}
+
+function Exit-RunStateLock($Stream) {
+  if ($null -ne $Stream) {
+    $Stream.Dispose()
+  }
+}
+
 function Format-SessionBlock([string]$Role, [string]$Content, [string]$CreatedAtIso, [string]$Id) {
   $trimmed = $Content.Trim()
   if (-not $trimmed) { return "" }
@@ -176,7 +217,9 @@ $startedAt = [System.Diagnostics.Stopwatch]::StartNew()
 $observedReviewState = $false
 try {
   while ($true) {
+    $stateLockStream = $null
     try {
+      $stateLockStream = Enter-RunStateLock $resolvedRunDir
       $current = (Read-TextUtf8NoBom $statusPath).Trim()
       if ($current -eq "WAITING_FOR_REVIEW") {
         $observedReviewState = $true
@@ -199,6 +242,8 @@ try {
       }
     } catch {
       [Console]::Error.WriteLine("WAIT_ERROR: $($_.Exception.Message)")
+    } finally {
+      Exit-RunStateLock $stateLockStream
     }
 
     Start-Sleep -Seconds $pollSeconds

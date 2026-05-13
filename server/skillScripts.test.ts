@@ -366,6 +366,62 @@ describe('Codex Pro Max skill scripts', () => {
     expect(session).toContain('Done.')
   })
 
+  it('request review waits for the selected run state lock', async () => {
+    const root = await createTempRoot()
+    const runDir = path.join(root, 'runs', 'target-run')
+    await mkdir(runDir, { recursive: true })
+    const holder = startStateLockHolder(path.join(runDir, 'run_state.lock'), 1)
+
+    try {
+      await waitForFile(path.join(runDir, 'run_state.lock'))
+      const startedAt = Date.now()
+      const result = await runPowerShellScript(
+        REQUEST_SCRIPT,
+        ['-RunDir', runDir, '-Output', 'Done after lock.'],
+        {
+          CODEX_PRO_MAX_LOCK_TIMEOUT_SECONDS: '5',
+        },
+      )
+
+      expect(result.code).toBe(0)
+      expect(Date.now() - startedAt).toBeGreaterThanOrEqual(800)
+      await expect(readFile(path.join(runDir, 'output.md'), 'utf8')).resolves.toBe('Done after lock.')
+      await expect(readFile(path.join(runDir, 'status.txt'), 'utf8')).resolves.toBe('WAITING_FOR_REVIEW')
+    } finally {
+      holder.child.kill()
+      await waitForExit(holder, 2_000).catch(() => ({ code: null }))
+    }
+  })
+
+  it('run state locks are scoped to each run directory', async () => {
+    const root = await createTempRoot()
+    const lockedRunDir = path.join(root, 'runs', 'locked-run')
+    const freeRunDir = path.join(root, 'runs', 'free-run')
+    await mkdir(lockedRunDir, { recursive: true })
+    await mkdir(freeRunDir, { recursive: true })
+    const holder = startStateLockHolder(path.join(lockedRunDir, 'run_state.lock'), 2)
+
+    try {
+      await waitForFile(path.join(lockedRunDir, 'run_state.lock'))
+      const startedAt = Date.now()
+      const result = await runPowerShellScript(
+        REQUEST_SCRIPT,
+        ['-RunDir', freeRunDir, '-Output', 'Free run done.'],
+        {
+          CODEX_PRO_MAX_LOCK_TIMEOUT_SECONDS: '5',
+        },
+      )
+
+      expect(result.code).toBe(0)
+      expect(Date.now() - startedAt).toBeLessThan(1_500)
+      await expect(readFile(path.join(freeRunDir, 'output.md'), 'utf8')).resolves.toBe('Free run done.')
+      await expect(readFile(path.join(lockedRunDir, 'output.md'), 'utf8')).rejects.toThrow()
+    } finally {
+      holder.child.kill()
+      await waitForExit(holder, 2_000).catch(() => ({ code: null }))
+    }
+  })
+
   it('wait for review reads instruction, appends user history, and returns session path', async () => {
     const root = await createTempRoot()
     const runDir = path.join(root, 'runs', 'target-run')
@@ -551,6 +607,41 @@ function startPowerShellScript(scriptPath: string, args: string[], env: Record<s
   return { child, output }
 }
 
+function startStateLockHolder(lockPath: string, holdSeconds: number): StartedWaitScript {
+  const output = { stdout: '', stderr: '' }
+  const escapedLockPath = lockPath.replaceAll("'", "''")
+  const command = [
+    "$ErrorActionPreference = 'Stop'",
+    `$path = '${escapedLockPath}'`,
+    `$seconds = ${holdSeconds}`,
+    '$encoding = New-Object System.Text.UTF8Encoding($false)',
+    '$stream = [System.IO.File]::Open($path, [System.IO.FileMode]::OpenOrCreate, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)',
+    'try {',
+    '  $stream.SetLength(0)',
+    "  $bytes = $encoding.GetBytes('holder')",
+    '  $stream.Write($bytes, 0, $bytes.Length)',
+    '  $stream.Flush()',
+    '  Start-Sleep -Seconds $seconds',
+    '} finally {',
+    '  $stream.Dispose()',
+    '}',
+  ].join('; ')
+  const encodedCommand = Buffer.from(command, 'utf16le').toString('base64')
+  const child = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encodedCommand], {
+    env: { ...process.env },
+    windowsHide: true,
+  })
+
+  child.stdout?.on('data', (chunk: Buffer) => {
+    output.stdout += chunk.toString('utf8')
+  })
+  child.stderr?.on('data', (chunk: Buffer) => {
+    output.stderr += chunk.toString('utf8')
+  })
+
+  return { child, output }
+}
+
 function waitForExit(started: StartedWaitScript, timeoutMs: number) {
   return new Promise<{ code: number | null }>((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -576,6 +667,19 @@ function waitForExit(started: StartedWaitScript, timeoutMs: number) {
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function waitForFile(filePath: string, timeoutMs = 2_000) {
+  const startedAt = Date.now()
+  while (Date.now() - startedAt < timeoutMs) {
+    if (await fileExists(filePath)) {
+      await delay(100)
+      return
+    }
+    await delay(50)
+  }
+
+  throw new Error(`File did not appear: ${filePath}`)
 }
 
 async function fileExists(filePath: string) {
