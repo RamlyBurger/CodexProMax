@@ -519,6 +519,113 @@ describe('App', () => {
     expect(rateLimits).toHaveTextContent('59% left')
   })
 
+  it('shows only live reasoning from the matching rollout log while Codex is working', async () => {
+    const currentRunId = '019e1aab-577b-7741-8889-c683dd299526'
+    vi.mocked(fetch).mockImplementation(async (url: string | URL | Request) => {
+      const requestUrl = String(url)
+      if (requestUrl === '/api/snapshot') {
+        return jsonResponse(managerFactory({
+          selectedRunId: currentRunId,
+          runs: [
+            {
+              runId: currentRunId,
+              displayName: currentRunId,
+              rootPath: `C:\\Users\\ramly\\Desktop\\CodexProMax\\runs\\${currentRunId}`,
+              status: 'RUNNING',
+              owner: 'agent',
+              updatedAtIso: '2026-05-07T00:00:00.000Z',
+              updatedAtMs: 1,
+              outputPreview: 'Working.',
+              attachmentCount: 0,
+              hasInstruction: false,
+            },
+          ],
+        }))
+      }
+      if (requestUrl === `/api/runs/${currentRunId}/snapshot`) {
+        return jsonResponse(snapshotFactory({
+          runId: currentRunId,
+          displayName: currentRunId,
+          rootPath: `C:\\Users\\ramly\\Desktop\\CodexProMax\\runs\\${currentRunId}`,
+          status: 'RUNNING',
+          messages: [
+            {
+              id: 'user-1',
+              role: 'user',
+              content: 'Implement the current request',
+              createdAtIso: '2026-05-07T00:00:01.000Z',
+            },
+          ],
+        }))
+      }
+      if (requestUrl === '/api/codex-live/sessions?limit=100') {
+        return jsonResponse({
+          ok: true,
+          rootPath: 'C:\\Users\\ramly\\.codex\\sessions',
+          sessions: [
+            {
+              id: 'session-run-a',
+              fileName: `rollout-2026-05-07T00-00-00-${currentRunId}.jsonl`,
+              relativePath: `2026/05/07/rollout-2026-05-07T00-00-00-${currentRunId}.jsonl`,
+              createdAtIso: '2026-05-07T00:00:00.000Z',
+              updatedAtIso: '2026-05-07T00:04:00.000Z',
+              sizeBytes: 4096,
+            },
+          ],
+        })
+      }
+      if (requestUrl.startsWith('/api/codex-live/sessions/session-run-a?')) {
+        return jsonResponse({
+          ok: true,
+          rootPath: 'C:\\Users\\ramly\\.codex\\sessions',
+          session: {
+            id: 'session-run-a',
+            fileName: `rollout-2026-05-07T00-00-00-${currentRunId}.jsonl`,
+            relativePath: `2026/05/07/rollout-2026-05-07T00-00-00-${currentRunId}.jsonl`,
+            createdAtIso: '2026-05-07T00:00:00.000Z',
+            updatedAtIso: '2026-05-07T00:04:00.000Z',
+            sizeBytes: 4096,
+          },
+          records: [
+            {
+              id: 'reasoning-1',
+              index: 0,
+              timestamp: '2026-05-07T00:02:00.000Z',
+              kind: 'reasoning',
+              title: 'Thinking',
+              text: 'Checking the implementation path.',
+              callId: '',
+              status: 'running',
+            },
+            {
+              id: 'tool-1',
+              index: 1,
+              timestamp: '2026-05-07T00:03:00.000Z',
+              kind: 'tool-call',
+              title: 'Shell command',
+              text: 'Tool output should stay hidden from the thinking bubble.',
+              callId: 'call-tool-1',
+              status: 'completed',
+            },
+          ],
+          context: null,
+          tailBytes: 2048,
+          totalSizeBytes: 4096,
+          truncated: false,
+        })
+      }
+      return jsonResponse({ ok: false, error: `Unhandled request: ${requestUrl}` }, 500)
+    })
+
+    render(<App />)
+    await getEventSource()
+
+    const thinking = await screen.findByTestId('ai-thinking-process')
+    expect(thinking).toHaveTextContent('Checking the implementation path.')
+    expect(thinking).not.toHaveTextContent('Tool output should stay hidden')
+    expect(screen.queryByTestId('ai-loading-indicator')).not.toBeInTheDocument()
+  })
+
   it('renders Codex Live as a page and keeps the latest record at the bottom', async () => {
     window.history.replaceState(null, '', '/codex-live')
 

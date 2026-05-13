@@ -1299,6 +1299,28 @@ code,
   margin-top: 12px;
 }
 
+.ai-thinking-message {
+  margin-top: 12px;
+}
+
+.ai-thinking-bubble {
+  width: min(760px, 100%);
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px 16px 16px 4px;
+  background: #f8fcff;
+  box-shadow: var(--shadow-sm);
+}
+
+.ai-thinking-bubble .markdown-body {
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.ai-thinking-bubble .prose p {
+  color: var(--text-main);
+}
+
 .ai-loading-bubble {
   width: fit-content;
   min-width: 68px;

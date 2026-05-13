@@ -170,6 +170,7 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [codexLivePage, setCodexLivePage] = useState(isCodexLiveLocation)
   const [conversationLiveUsage, setConversationLiveUsage] = useState<CodexLiveContextUsage | null>(null)
+  const [conversationThinkingRecords, setConversationThinkingRecords] = useState<CodexLiveRecord[]>([])
   const [ctrlEnterConfirmOpen, setCtrlEnterConfirmOpen] = useState(false)
   const [confirmCtrlEnterSend, setConfirmCtrlEnterSend] = useState(() =>
     readStoredBoolean(CTRL_ENTER_CONFIRM_STORAGE_KEY, true),
@@ -300,6 +301,7 @@ function App() {
   useEffect(() => {
     if (!selectedRunId || codexLivePage || !isCodexRolloutRunId(selectedRunId)) {
       setConversationLiveUsage(null)
+      setConversationThinkingRecords([])
       return
     }
 
@@ -313,23 +315,31 @@ function App() {
         const liveSession = findCodexLiveSessionForRun(liveSessions.sessions, currentRunId)
         if (!liveSession) {
           setConversationLiveUsage(null)
+          setConversationThinkingRecords([])
           return
         }
 
         const liveHistory = await fetchCodexLiveHistory(liveSession.id, 200)
         if (!ignore) {
           setConversationLiveUsage(liveHistory.context)
+          setConversationThinkingRecords(
+            liveHistory.records
+              .filter((record) => record.kind === 'reasoning')
+              .slice(-6),
+          )
         }
       } catch {
         if (!ignore) {
           setConversationLiveUsage(null)
+          setConversationThinkingRecords([])
         }
       }
     }
 
     setConversationLiveUsage(null)
+    setConversationThinkingRecords([])
     void loadConversationUsage()
-    const timer = window.setInterval(() => void loadConversationUsage(), 15_000)
+    const timer = window.setInterval(() => void loadConversationUsage(), 5_000)
     return () => {
       ignore = true
       window.clearInterval(timer)
@@ -1033,12 +1043,16 @@ function App() {
   )
   const hasSessionHistoryFile = Boolean(runSnapshot?.files['session.md']?.exists)
   const lastChatMessage = chatMessages.length > 0 ? chatMessages[chatMessages.length - 1] : null
+  const conversationThinkingAnchor = conversationThinkingRecords
+    .map((record) => `${record.id}:${record.text.length}`)
+    .join('|')
   const chatScrollAnchor = [
     runSnapshot?.runId ?? selectedRunId ?? 'none',
     chatMessages.length,
     lastChatMessage?.id ?? 'none',
     lastChatMessage?.createdAtIso ?? 'none',
     lastChatMessage?.content.length ?? 0,
+    conversationThinkingAnchor,
     aiWorking ? 'ai-working' : 'ai-ready',
     pending === 'load' ? 'loading' : 'ready',
   ].join(':')
@@ -1458,7 +1472,11 @@ function App() {
                     }
                   />
                   {aiWorking && index === chatMessages.length - 1 && message.role === 'user' && (
-                    <AiLoadingMessage />
+                    conversationThinkingRecords.length > 0 ? (
+                      <AiThinkingMessage records={conversationThinkingRecords} />
+                    ) : (
+                      <AiLoadingMessage />
+                    )
                   )}
                 </Fragment>
               ))
@@ -2171,6 +2189,36 @@ function AiLoadingMessage() {
           <span />
           <span />
           <span />
+        </div>
+      </div>
+    </article>
+  )
+}
+
+function AiThinkingMessage({ records }: { records: CodexLiveRecord[] }) {
+  const thinkingMarkdown = records
+    .map((record) => record.text.trim())
+    .filter(Boolean)
+    .join('\n\n')
+
+  return (
+    <article
+      className="message chat-message assistant-message ai-thinking-message"
+      aria-label="Codex thinking process"
+      data-testid="ai-thinking-process"
+    >
+      <ProfileAvatar type="bot" />
+      <div className="message-content">
+        <div className="label-row message-label-row">
+          <span className="label-super">Thinking</span>
+        </div>
+        <div className="ai-thinking-bubble">
+          <MarkdownPanel
+            markdown={thinkingMarkdown}
+            safety={null}
+            emptyIcon="ri-brain-line"
+            emptyText="Thinking..."
+          />
         </div>
       </div>
     </article>
