@@ -1081,28 +1081,24 @@ code,
   background: #ffffff;
 }
 
+.conversation-usage-columns-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.conversation-usage-columns-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .conversation-context-limit {
   min-width: 0;
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
   padding: 5px 5px;
   border: 1px solid #bfdbfe;
   border-left: 3px solid var(--primary);
   border-radius: 8px;
   background: #ffffff;
-}
-
-.conversation-context-icon {
-  width: 24px;
-  height: 24px;
-  display: grid;
-  place-items: center;
-  border-radius: 8px;
-  background: var(--primary-soft);
-  color: var(--primary-hover);
-  font-size: 13px;
 }
 
 .conversation-context-copy {
@@ -1174,13 +1170,6 @@ code,
   );
 }
 
-.conversation-rate-limits {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-}
-
 .conversation-rate-limit {
   min-width: 0;
   display: grid;
@@ -1236,18 +1225,6 @@ code,
   box-shadow: 4px 0 10px 3px rgba(255, 255, 255, 0.45);
   filter: blur(2px);
   opacity: 0.6;
-}
-
-@media (min-width: 1180px) {
-  .conversation-usage {
-    grid-template-columns: minmax(220px, 1fr) minmax(260px, 0.8fr);
-  }
-}
-
-@media (max-width: 560px) {
-  .conversation-rate-limits {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 @keyframes liquidGaugeFlow {
@@ -3771,10 +3748,6 @@ button:focus-visible,
 
   .conversation-usage {
     padding: 6px 8px;
-  }
-
-  .conversation-rate-limits {
-    grid-template-columns: minmax(0, 1fr);
   }
 
   .run-count-pill {

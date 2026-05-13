@@ -3811,49 +3811,42 @@ function SettingsDialog({
 
 function ConversationUsageStrip({ usage }: { usage: CodexLiveContextUsage }) {
   const contextPercent = Math.max(0, Math.min(100, usage.percentUsed))
-  const totalTokens = usage.totalUsage?.totalTokens ?? 0
   const rateLimits = codexRateLimitGauges(usage)
+  const columnCount = Math.min(3, Math.max(1, rateLimits.length + 1))
 
   return (
-    <section className="conversation-usage" aria-label="Conversation usage limits">
+    <section
+      className={`conversation-usage conversation-usage-columns-${columnCount}`}
+      aria-label="Conversation usage limits"
+    >
       <div className="conversation-context-limit" aria-label="Conversation context limit">
-        <div className="conversation-context-icon" aria-hidden="true">
-          <i className="ri-expand-left-right-line" />
-        </div>
         <div className="conversation-context-copy">
           <div className="conversation-usage-heading">
-            <span>Context limit</span>
-            <strong>{formatPercent(contextPercent)} used</strong>
+            <span>Context</span>
+            <strong>{formatPercent(contextPercent)}</strong>
           </div>
           <div className="conversation-context-track" aria-hidden="true">
             <span className="liquid-bar" style={{ width: `${contextPercent}%`, animationDuration: '2.5s' }} />
           </div>
-          <small>
-            {formatTokenCount(usage.usedTokens)} of {formatTokenCount(usage.contextWindow)} used
-            {totalTokens > 0 ? ` - Total ${formatTokenCount(totalTokens)}` : ''}
-          </small>
+          <small>{formatTokenCount(usage.usedTokens)}/{formatTokenCount(usage.contextWindow)}</small>
         </div>
       </div>
 
-      {rateLimits.length > 0 && (
-        <div className="conversation-rate-limits" aria-label="5 hour and weekly limits">
-          {rateLimits.map((limit) => (
-            <div className="conversation-rate-limit" key={limit.key}>
-              <div className="conversation-usage-heading">
-                <span>{limit.label}</span>
-                <strong>{limit.value}</strong>
-              </div>
-              <div className="conversation-rate-track" aria-hidden="true">
-                <span
-                  className="liquid-bar"
-                  style={{ width: `${Math.max(0, Math.min(100, limit.percent))}%`, animationDuration: '2.5s' }}
-                />
-              </div>
-              {limit.detail && <small>{limit.detail}</small>}
-            </div>
-          ))}
+      {rateLimits.map((limit) => (
+        <div className="conversation-rate-limit" key={limit.key}>
+          <div className="conversation-usage-heading">
+            <span>{limit.label}</span>
+            <strong>{limit.value}</strong>
+          </div>
+          <div className="conversation-rate-track" aria-hidden="true">
+            <span
+              className="liquid-bar"
+              style={{ width: `${Math.max(0, Math.min(100, limit.percent))}%`, animationDuration: '2.5s' }}
+            />
+          </div>
+          {limit.detail && <small>{limit.detail}</small>}
         </div>
-      )}
+      ))}
     </section>
   )
 }
@@ -3878,14 +3871,14 @@ function codexRateLimitGauges(usage: CodexLiveContextUsage) {
   return [
     primaryLimit && {
       key: 'primary',
-      label: formatLimitName(primaryLimit, '5h limit'),
+      label: formatLimitName(primaryLimit, '5h'),
       percent: primaryLimit.usedPercent,
       value: `${formatPercent(primaryLimit.remainingPercent)} left`,
       detail: formatResetDateTime(primaryLimit.resetsAtIso),
     },
     secondaryLimit && {
       key: 'secondary',
-      label: formatLimitName(secondaryLimit, 'Weekly limit'),
+      label: formatLimitName(secondaryLimit, 'Weekly'),
       percent: secondaryLimit.usedPercent,
       value: `${formatPercent(secondaryLimit.remainingPercent)} left`,
       detail: formatResetDateTime(secondaryLimit.resetsAtIso),
@@ -3906,8 +3899,8 @@ function formatPercent(value: number) {
 }
 
 function formatLimitName(limit: CodexLiveRateLimitWindow, fallback: string) {
-  if (limit.windowMinutes === 300) return '5h limit'
-  if (limit.windowMinutes === 10_080) return 'Weekly limit'
+  if (limit.windowMinutes === 300) return '5h'
+  if (limit.windowMinutes === 10_080) return 'Weekly'
   return formatWindowMinutes(limit.windowMinutes) || fallback
 }
 
@@ -3922,7 +3915,7 @@ function formatWindowMinutes(value: number) {
 function formatResetDateTime(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
-  return `Resets ${dateFormatter.format(date)}`
+  return dateFormatter.format(date)
 }
 
 function ProtocolFilePreviewDialog({
