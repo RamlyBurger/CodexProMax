@@ -1277,12 +1277,10 @@ code,
   position: sticky;
   bottom: 16px;
   z-index: 15;
-  width: min(100%, var(--chat-column-width));
+  width: 100%;
   height: 0;
   display: flex;
-  justify-content: flex-end;
-  margin: 0 auto;
-  padding-right: 20px;
+  justify-content: center;
   pointer-events: none;
 }
 
@@ -3782,7 +3780,6 @@ button:focus-visible,
 
   .scroll-bottom-button-layer {
     bottom: 12px;
-    padding-right: 10px;
   }
 
   .ai-thinking-bubble {
