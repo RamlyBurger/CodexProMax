@@ -201,6 +201,77 @@ describe('Codex Pro Max skill scripts', () => {
     })
   })
 
+  it('returns when another waiter already owns the run directory', async () => {
+    const root = await createTempRoot()
+    const runDir = path.join(root, 'runs', 'target-run')
+    await mkdir(runDir, { recursive: true })
+    await writeFile(path.join(runDir, 'status.txt'), 'WAITING_FOR_REVIEW')
+    await writeFile(path.join(runDir, 'instruction.txt'), '')
+
+    const firstWaiter = startWaitScript(
+      {
+        CODEX_PRO_MAX_POLL_SECONDS: '1',
+      },
+      ['-RunDir', runDir],
+    )
+
+    try {
+      await delay(1_200)
+      const secondWaiter = await runPowerShellScript(WAIT_SCRIPT, ['-RunDir', runDir], {
+        CODEX_PRO_MAX_POLL_SECONDS: '1',
+        CODEX_PRO_MAX_MAX_WAIT_SECONDS: '2',
+      })
+      const payload = JSON.parse(secondWaiter.stdout) as {
+        shouldFinish: boolean
+        waiterAlreadyRunning: boolean
+        instruction: string
+      }
+
+      expect(secondWaiter.code).toBe(0)
+      expect(payload).toMatchObject({
+        shouldFinish: true,
+        waiterAlreadyRunning: true,
+        instruction: '',
+      })
+    } finally {
+      firstWaiter.child.kill()
+      await waitForExit(firstWaiter, 2_000).catch(() => ({ code: null }))
+    }
+  })
+
+  it('returns when review state is consumed by another waiter', async () => {
+    const root = await createTempRoot()
+    const runDir = path.join(root, 'runs', 'target-run')
+    await mkdir(runDir, { recursive: true })
+    await writeFile(path.join(runDir, 'status.txt'), 'WAITING_FOR_REVIEW')
+    await writeFile(path.join(runDir, 'instruction.txt'), '')
+
+    const started = startWaitScript(
+      {
+        CODEX_PRO_MAX_POLL_SECONDS: '1',
+      },
+      ['-RunDir', runDir],
+    )
+
+    await delay(1_200)
+    await writeFile(path.join(runDir, 'status.txt'), 'RUNNING')
+    const result = await waitForExit(started, 6_000)
+    const payload = JSON.parse(started.output.stdout) as {
+      shouldFinish: boolean
+      instructionConsumedElsewhere: boolean
+      instruction: string
+      status: string
+    }
+
+    expect(result.code).toBe(0)
+    expect(payload).toMatchObject({
+      shouldFinish: true,
+      instructionConsumedElsewhere: true,
+      instruction: '',
+      status: 'RUNNING',
+    })
+  })
+
   it('returns cleanly after idle wait timeout before host shell timeout', async () => {
     const root = await createTempRoot()
     const runDir = path.join(root, 'runs', 'target-run')

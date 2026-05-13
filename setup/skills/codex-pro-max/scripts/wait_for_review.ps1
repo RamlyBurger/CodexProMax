@@ -106,10 +106,56 @@ function Read-WaitingSession([string]$Path, [string]$Status) {
   } | ConvertTo-Json -Compress
 }
 
+function Read-ActiveWaiterSession([string]$Path, [string]$Status) {
+  $sessionPath = Join-Path $Path "session.md"
+
+  [ordered]@{
+    ok = $true
+    runDir = $Path
+    status = $Status
+    instruction = ""
+    sessionPath = $sessionPath
+    shouldFinish = $true
+    waiterAlreadyRunning = $true
+    message = "Another wait_for_review.ps1 process is already waiting for this run."
+  } | ConvertTo-Json -Compress
+}
+
+function Read-InstructionConsumedElsewhereSession([string]$Path, [string]$Status) {
+  $sessionPath = Join-Path $Path "session.md"
+
+  [ordered]@{
+    ok = $true
+    runDir = $Path
+    status = $Status
+    instruction = ""
+    sessionPath = $sessionPath
+    shouldFinish = $true
+    instructionConsumedElsewhere = $true
+    message = "This wait_for_review.ps1 process observed the run leave review state without receiving the instruction. Another waiter likely consumed it."
+  } | ConvertTo-Json -Compress
+}
+
 $resolvedRunDir = [System.IO.Path]::GetFullPath($RunDir)
 New-Item -ItemType Directory -Path $resolvedRunDir -Force | Out-Null
 
 $statusPath = Join-Path $resolvedRunDir "status.txt"
+$instructionPath = Join-Path $resolvedRunDir "instruction.txt"
+$lockPath = Join-Path $resolvedRunDir "wait_for_review.lock"
+$lockStream = $null
+try {
+  $lockStream = [System.IO.File]::Open($lockPath, [System.IO.FileMode]::OpenOrCreate, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+  $lockStream.SetLength(0)
+  $lockText = "pid=$PID`nstartedAt=$((Get-Date).ToUniversalTime().ToString('o'))`n"
+  $lockBytes = $script:Utf8NoBom.GetBytes($lockText)
+  $lockStream.Write($lockBytes, 0, $lockBytes.Length)
+  $lockStream.Flush()
+} catch [System.IO.IOException] {
+  $current = (Read-TextUtf8NoBom $statusPath).Trim()
+  Read-ActiveWaiterSession $resolvedRunDir $current
+  exit 0
+}
+
 $pollSeconds = 10
 if (-not [string]::IsNullOrWhiteSpace($env:CODEX_PRO_MAX_POLL_SECONDS)) {
   $parsedPollSeconds = 0
@@ -127,24 +173,39 @@ if (-not [string]::IsNullOrWhiteSpace($env:CODEX_PRO_MAX_MAX_WAIT_SECONDS)) {
 }
 
 $startedAt = [System.Diagnostics.Stopwatch]::StartNew()
-while ($true) {
-  try {
-    $current = (Read-TextUtf8NoBom $statusPath).Trim()
-    if ($current -eq "INSTRUCTION_RECEIVED") {
-      Read-And-ClearInstruction $resolvedRunDir
-      exit 0
+$observedReviewState = $false
+try {
+  while ($true) {
+    try {
+      $current = (Read-TextUtf8NoBom $statusPath).Trim()
+      if ($current -eq "WAITING_FOR_REVIEW") {
+        $observedReviewState = $true
+      }
+      if ($current -eq "INSTRUCTION_RECEIVED") {
+        Read-And-ClearInstruction $resolvedRunDir
+        exit 0
+      }
+      if ($current -eq "STOPPED") {
+        Read-StoppedSession $resolvedRunDir
+        exit 0
+      }
+      if ($observedReviewState -and $current -eq "RUNNING" -and -not (Read-TextUtf8NoBom $instructionPath).Trim()) {
+        Read-InstructionConsumedElsewhereSession $resolvedRunDir $current
+        exit 0
+      }
+      if ($startedAt.Elapsed.TotalSeconds -ge $maxWaitSeconds) {
+        Read-WaitingSession $resolvedRunDir $current
+        exit 0
+      }
+    } catch {
+      [Console]::Error.WriteLine("WAIT_ERROR: $($_.Exception.Message)")
     }
-    if ($current -eq "STOPPED") {
-      Read-StoppedSession $resolvedRunDir
-      exit 0
-    }
-    if ($startedAt.Elapsed.TotalSeconds -ge $maxWaitSeconds) {
-      Read-WaitingSession $resolvedRunDir $current
-      exit 0
-    }
-  } catch {
-    [Console]::Error.WriteLine("WAIT_ERROR: $($_.Exception.Message)")
-  }
 
-  Start-Sleep -Seconds $pollSeconds
+    Start-Sleep -Seconds $pollSeconds
+  }
+} finally {
+  if ($null -ne $lockStream) {
+    $lockStream.Dispose()
+    Remove-Item -LiteralPath $lockPath -Force -ErrorAction SilentlyContinue
+  }
 }
