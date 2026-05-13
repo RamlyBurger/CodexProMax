@@ -231,6 +231,39 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: /Run B/i }).querySelector('.ri-inbox-archive-line')).not.toBeInTheDocument()
   })
 
+  it('preserves soft line breaks in sent user messages', async () => {
+    const messages: Snapshot['messages'] = [
+      {
+        id: 'user-with-newlines',
+        role: 'user',
+        content: 'First line\nSecond line',
+        createdAtIso: '2026-05-07T00:00:04.000Z',
+      },
+    ]
+    vi.mocked(fetch).mockImplementation(async (url: string | URL | Request) => {
+      const requestUrl = String(url)
+      if (requestUrl === '/api/teammates') {
+        return jsonResponse({ ok: true, teammates: teammateFactory() })
+      }
+      if (requestUrl === '/api/snapshot') {
+        return jsonResponse(managerFactory())
+      }
+      if (requestUrl.includes('/api/runs/run-a/snapshot')) {
+        return jsonResponse(snapshotFactory({ messages }))
+      }
+      return jsonResponse({ ok: false, error: `Unhandled request: ${requestUrl}` }, 500)
+    })
+
+    render(<App />)
+    await getEventSource()
+
+    await waitFor(() => {
+      const userMarkdown = document.querySelector('.user-message .markdown-body')
+      expect(userMarkdown).toHaveClass('preserve-soft-breaks')
+      expect(userMarkdown?.textContent).toBe('First line\nSecond line')
+    })
+  })
+
   it('uses the smooth svg spinner for running runs', async () => {
     const manager = managerFactory()
     manager.runs[0] = {

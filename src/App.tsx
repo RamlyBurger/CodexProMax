@@ -2171,6 +2171,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
           <MarkdownPanel
             markdown={message.content}
             safety={null}
+            preserveSoftBreaks={isUser}
             emptyIcon={isUser ? 'ri-user-3-line' : 'ri-file-paper-2-line'}
             emptyText={isUser ? 'Empty message.' : 'No output draft yet.'}
           />
@@ -2412,11 +2413,13 @@ function conversationThinkingRecordsFromLiveHistory(
 const MarkdownPanel = memo(function MarkdownPanel({
   markdown,
   safety,
+  preserveSoftBreaks = false,
   emptyIcon,
   emptyText,
 }: {
   markdown: string
   safety: MarkdownSafety | null
+  preserveSoftBreaks?: boolean
   emptyIcon?: string
   emptyText: string
 }) {
@@ -2437,7 +2440,7 @@ const MarkdownPanel = memo(function MarkdownPanel({
   return (
     <>
       {warning}
-      <div className="prose markdown-body">
+      <div className={`prose markdown-body${preserveSoftBreaks ? ' preserve-soft-breaks' : ''}`}>
         <ReactMarkdown components={MARKDOWN_COMPONENTS} remarkPlugins={MARKDOWN_REMARK_PLUGINS}>{markdown}</ReactMarkdown>
       </div>
     </>

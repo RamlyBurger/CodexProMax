@@ -1279,6 +1279,11 @@ code,
   color: var(--text-main);
 }
 
+.markdown-body.preserve-soft-breaks p,
+.markdown-body.preserve-soft-breaks li {
+  white-space: pre-wrap;
+}
+
 .ai-loading-message {
   margin-top: 12px;
 }
