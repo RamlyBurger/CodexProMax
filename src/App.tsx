@@ -2152,6 +2152,7 @@ function AiLoadingMessage() {
 function AiThinkingMessage({ records }: { records: CodexLiveRecord[] }) {
   const bubbleRef = useRef<HTMLDivElement | null>(null)
   const [typingState, setTypingState] = useState<{ id: string; text: string } | null>(null)
+  const typingStateRef = useRef<{ id: string; text: string } | null>(null)
   const recordAnchor = records
     .map((record) => `${record.id}:${record.text.length}`)
     .join('|')
@@ -2172,18 +2173,47 @@ function AiThinkingMessage({ records }: { records: CodexLiveRecord[] }) {
     .join('\n\n')
 
   useEffect(() => {
+    typingStateRef.current = typingState
+  }, [typingState])
+
+  useEffect(() => {
+    function updateTypingState(nextState: { id: string; text: string } | null) {
+      typingStateRef.current = nextState
+      setTypingState(nextState)
+    }
+
     if (!latestRecord || !latestRecordText) {
-      setTypingState(null)
+      updateTypingState(null)
       return
     }
 
     const latestRecordId = latestRecord.id
+    const currentState = typingStateRef.current
+    const currentText = currentState?.id === latestRecordId ? currentState.text : ''
+
+    if (currentState?.id === latestRecordId && currentText === latestRecordText) {
+      return
+    }
+
+    if (currentState?.id === latestRecordId && currentText && !latestRecordText.startsWith(currentText)) {
+      updateTypingState({ id: latestRecordId, text: latestRecordText })
+      return
+    }
+
+    const startLength = currentState?.id === latestRecordId && latestRecordText.startsWith(currentText)
+      ? currentText.length
+      : 0
+    if (startLength >= latestRecordText.length) {
+      updateTypingState({ id: latestRecordId, text: latestRecordText })
+      return
+    }
+
     const stepSize = Math.max(1, Math.ceil(latestRecordText.length / 12))
-    let visibleLength = 0
+    let visibleLength = startLength
 
     function tick() {
       visibleLength = Math.min(latestRecordText.length, visibleLength + stepSize)
-      setTypingState({
+      updateTypingState({
         id: latestRecordId,
         text: latestRecordText.slice(0, visibleLength),
       })
@@ -2192,7 +2222,7 @@ function AiThinkingMessage({ records }: { records: CodexLiveRecord[] }) {
       }
     }
 
-    setTypingState({ id: latestRecordId, text: '' })
+    updateTypingState({ id: latestRecordId, text: latestRecordText.slice(0, startLength) })
     const timer = window.setInterval(tick, 16)
     tick()
 
