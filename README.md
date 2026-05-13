@@ -399,3 +399,13 @@ Build and type-check:
 ```bash
 npm run build
 ```
+
+## Educational Purpose, License, and Responsible Use
+
+This project is provided for educational and research purposes. Use it only in lawful, authorized, and responsible environments.
+
+Codex Pro Max is licensed under the MIT License. See [`LICENSE`](LICENSE) for the full license text.
+
+Do not use this project to abuse services, bypass access controls, violate platform terms, compromise systems, exfiltrate data, harass people, or automate activity you are not authorized to perform. Users are solely responsible for how they configure, deploy, modify, and operate this software.
+
+The author and contributors are not responsible for misuse, abuse, damage, data loss, service violations, illegal activity, or other consequences caused by anyone using this project.
