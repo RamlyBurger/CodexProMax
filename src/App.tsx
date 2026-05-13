@@ -186,8 +186,10 @@ function App() {
   const activeMessageFrameRef = useRef<number | null>(null)
   const activeMessageScrollElementRef = useRef<HTMLDivElement | null>(null)
   const smoothScrollReleaseTimerRef = useRef<number | null>(null)
+  const pinnedBottomCorrectionFrameRef = useRef<number | null>(null)
   const bottomScrollSettleUntilRef = useRef(0)
   const userMessageRefs = useRef(new Map<string, HTMLElement>())
+  const chatContentRef = useRef<HTMLDivElement | null>(null)
   const queuedInstructionIdRef = useRef(0)
   const queuedInstructionsByRunRef = useRef<QueuedInstructionsByRun>({})
   const queuedSendInFlightRef = useRef<QueuedInstructionIdsByRun>({})
@@ -335,6 +337,9 @@ function App() {
     return () => {
       if (activeMessageFrameRef.current !== null) {
         window.cancelAnimationFrame(activeMessageFrameRef.current)
+      }
+      if (pinnedBottomCorrectionFrameRef.current !== null) {
+        window.cancelAnimationFrame(pinnedBottomCorrectionFrameRef.current)
       }
       clearSmoothScrollReleaseTimer()
       clearAllQueuedSendDelays()
@@ -1019,12 +1024,22 @@ function App() {
   const conversationThinkingAnchor = conversationThinkingRecords
     .map((record) => `${record.id}:${record.text.length}`)
     .join('|')
+  const conversationUsageAnchor = conversationLiveUsage
+    ? [
+        conversationLiveUsage.timestamp,
+        conversationLiveUsage.contextWindow,
+        conversationLiveUsage.usedTokens,
+        conversationLiveUsage.rateLimits?.primary?.remainingPercent ?? 'none',
+        conversationLiveUsage.rateLimits?.secondary?.remainingPercent ?? 'none',
+      ].join(':')
+    : 'no-usage'
   const chatScrollAnchor = [
     runSnapshot?.runId ?? selectedRunId ?? 'none',
     chatMessages.length,
     lastChatMessage?.id ?? 'none',
     lastChatMessage?.createdAtIso ?? 'none',
     lastChatMessage?.content.length ?? 0,
+    conversationUsageAnchor,
     conversationThinkingAnchor,
     aiWorking ? 'ai-working' : 'ai-ready',
     pending === 'load' ? 'loading' : 'ready',
@@ -1059,6 +1074,34 @@ function App() {
 
     updateActiveUserMessage()
   }, [instruction])
+
+  useLayoutEffect(() => {
+    const scrollElement = chatScrollRef.current
+    if (!scrollElement || typeof ResizeObserver === 'undefined') {
+      return
+    }
+
+    const observer = new ResizeObserver(() => {
+      if (chatPinnedToBottomRef.current) {
+        queuePinnedBottomCorrection(scrollElement)
+      }
+    })
+    observer.observe(scrollElement)
+    if (chatContentRef.current) {
+      observer.observe(chatContentRef.current)
+    }
+
+    return () => observer.disconnect()
+  }, [selectedRunId])
+
+  const handleDynamicChatContentChange = useCallback(() => {
+    const scrollElement = chatScrollRef.current
+    if (!scrollElement || !chatPinnedToBottomRef.current) {
+      return
+    }
+
+    queuePinnedBottomCorrection(scrollElement)
+  }, [])
 
   useEffect(() => {
     if (!previewAttachment) return
@@ -1274,7 +1317,12 @@ function App() {
   }
 
   function queuePinnedBottomCorrection(scrollElement: HTMLDivElement) {
-    window.requestAnimationFrame(() => {
+    if (pinnedBottomCorrectionFrameRef.current !== null) {
+      window.cancelAnimationFrame(pinnedBottomCorrectionFrameRef.current)
+    }
+
+    pinnedBottomCorrectionFrameRef.current = window.requestAnimationFrame(() => {
+      pinnedBottomCorrectionFrameRef.current = null
       if (!chatPinnedToBottomRef.current || chatScrollRef.current !== scrollElement) {
         return
       }
@@ -1407,49 +1455,57 @@ function App() {
         {conversationLiveUsage && <ConversationUsageStrip usage={conversationLiveUsage} />}
 
         <div className="chat-scroll" ref={chatScrollRef} onScroll={handleChatScroll} data-testid="chat-scroll">
-          {runs.length === 0 ? (
-            <EmptyInbox managerSnapshot={managerSnapshot} />
-          ) : (
-            chatMessages.length > 0 ? (
-              chatMessages.map((message, index) => (
-                <Fragment key={message.id}>
-                  <ChatMessageItem
-                    message={message}
-                    attachments={attachments}
-                    onAttachmentPreview={setPreviewAttachment}
-                    messageRef={
-                      message.role === 'user'
-                        ? (element) => setUserMessageElement(message.id, element)
-                        : undefined
-                    }
-                  />
-                  {aiWorking && index === chatMessages.length - 1 && message.role === 'user' && (
-                    conversationThinkingRecords.length > 0 ? (
-                      <AiThinkingMessage records={conversationThinkingRecords} />
-                    ) : (
-                      <AiLoadingMessage />
-                    )
-                  )}
-                </Fragment>
-              ))
-            ) : aiWorking && conversationThinkingRecords.length > 0 ? (
-              <AiThinkingMessage records={conversationThinkingRecords} />
-            ) : hasSessionHistoryFile ? (
-              <EmptyConversationHistory />
+          <div className="chat-scroll-content" ref={chatContentRef}>
+            {runs.length === 0 ? (
+              <EmptyInbox managerSnapshot={managerSnapshot} />
             ) : (
-              <article className="message">
-                <ProfileAvatar type="bot" />
-                <div className="message-content">
-                  <MarkdownPanel
-                    markdown={pending === 'load' ? '' : runSnapshot?.outputMd ?? ''}
-                    safety={runSnapshot?.markdownSafety['output.md'] ?? null}
-                    emptyIcon="ri-file-paper-2-line"
-                    emptyText={pending === 'load' ? 'Loading run output...' : 'No output draft yet.'}
-                  />
-                </div>
-              </article>
-            )
-          )}
+              chatMessages.length > 0 ? (
+                chatMessages.map((message, index) => (
+                  <Fragment key={message.id}>
+                    <ChatMessageItem
+                      message={message}
+                      attachments={attachments}
+                      onAttachmentPreview={setPreviewAttachment}
+                      messageRef={
+                        message.role === 'user'
+                          ? (element) => setUserMessageElement(message.id, element)
+                          : undefined
+                      }
+                    />
+                    {aiWorking && index === chatMessages.length - 1 && message.role === 'user' && (
+                      conversationThinkingRecords.length > 0 ? (
+                        <AiThinkingMessage
+                          records={conversationThinkingRecords}
+                          onContentChange={handleDynamicChatContentChange}
+                        />
+                      ) : (
+                        <AiLoadingMessage />
+                      )
+                    )}
+                  </Fragment>
+                ))
+              ) : aiWorking && conversationThinkingRecords.length > 0 ? (
+                <AiThinkingMessage
+                  records={conversationThinkingRecords}
+                  onContentChange={handleDynamicChatContentChange}
+                />
+              ) : hasSessionHistoryFile ? (
+                <EmptyConversationHistory />
+              ) : (
+                <article className="message">
+                  <ProfileAvatar type="bot" />
+                  <div className="message-content">
+                    <MarkdownPanel
+                      markdown={pending === 'load' ? '' : runSnapshot?.outputMd ?? ''}
+                      safety={runSnapshot?.markdownSafety['output.md'] ?? null}
+                      emptyIcon="ri-file-paper-2-line"
+                      emptyText={pending === 'load' ? 'Loading run output...' : 'No output draft yet.'}
+                    />
+                  </div>
+                </article>
+              )
+            )}
+          </div>
           {!chatAtBottom && (
             <div className="scroll-bottom-button-layer">
               <button
@@ -2149,7 +2205,13 @@ function AiLoadingMessage() {
   )
 }
 
-function AiThinkingMessage({ records }: { records: CodexLiveRecord[] }) {
+function AiThinkingMessage({
+  records,
+  onContentChange,
+}: {
+  records: CodexLiveRecord[]
+  onContentChange?: () => void
+}) {
   const bubbleRef = useRef<HTMLDivElement | null>(null)
   const [typingState, setTypingState] = useState<{ id: string; text: string } | null>(null)
   const typingStateRef = useRef<{ id: string; text: string } | null>(null)
@@ -2233,7 +2295,8 @@ function AiThinkingMessage({ records }: { records: CodexLiveRecord[] }) {
     const bubble = bubbleRef.current
     if (!bubble) return
     bubble.scrollTop = bubble.scrollHeight
-  }, [recordAnchor, thinkingMarkdown.length])
+    onContentChange?.()
+  }, [onContentChange, recordAnchor, thinkingMarkdown.length])
 
   return (
     <article

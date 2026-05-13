@@ -1130,6 +1130,10 @@ code,
   scroll-behavior: smooth;
 }
 
+.chat-scroll-content {
+  min-height: 100%;
+}
+
 .scroll-bottom-button-layer {
   position: sticky;
   bottom: 16px;

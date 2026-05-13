@@ -2113,6 +2113,54 @@ describe('App', () => {
     await waitFor(() => expect(scrollPane.scrollTop).toBe(520))
   })
 
+  it('keeps the chat pinned when observed layout changes resize the scroll area', async () => {
+    class MockResizeObserver {
+      static instances: MockResizeObserver[] = []
+
+      constructor(private readonly callback: ResizeObserverCallback) {
+        MockResizeObserver.instances.push(this)
+      }
+
+      observe = vi.fn()
+      disconnect = vi.fn()
+
+      trigger() {
+        this.callback([], this as unknown as ResizeObserver)
+      }
+    }
+    vi.stubGlobal('ResizeObserver', MockResizeObserver)
+
+    render(<App />)
+    await getEventSource()
+
+    expect(await screen.findByRole('heading', { name: 'Draft A' })).toBeInTheDocument()
+
+    const scrollPane = screen.getByTestId('chat-scroll')
+    const metrics = setScrollMetrics(scrollPane, {
+      clientHeight: 100,
+      scrollHeight: 240,
+      scrollTop: 140,
+    })
+    fireEvent.scroll(scrollPane)
+    metrics.setScrollHeight(520)
+
+    act(() => {
+      MockResizeObserver.instances.forEach((observer) => observer.trigger())
+    })
+
+    await waitFor(() => expect(scrollPane.scrollTop).toBe(520))
+
+    scrollPane.scrollTop = 60
+    fireEvent.scroll(scrollPane)
+    metrics.setScrollHeight(700)
+
+    act(() => {
+      MockResizeObserver.instances.forEach((observer) => observer.trigger())
+    })
+
+    expect(scrollPane.scrollTop).toBe(60)
+  })
+
   it('does not force-scroll when a new message arrives while the user is scrolled up', async () => {
     render(<App />)
     await getEventSource()
