@@ -2199,19 +2199,59 @@ function AiLoadingMessage() {
 
 function AiThinkingMessage({ records }: { records: CodexLiveRecord[] }) {
   const bubbleRef = useRef<HTMLDivElement | null>(null)
+  const [typingState, setTypingState] = useState<{ id: string; text: string } | null>(null)
   const recordAnchor = records
     .map((record) => `${record.id}:${record.text.length}`)
     .join('|')
+  const latestRecord = records.length > 0 ? records[records.length - 1] : null
+  const latestRecordText = latestRecord?.text.trim() ?? ''
   const thinkingMarkdown = records
-    .map((record) => record.text.trim())
+    .map((record, index) => {
+      if (
+        index === records.length - 1
+        && latestRecord
+        && record.text.trim() === latestRecordText
+      ) {
+        return typingState?.id === latestRecord.id ? typingState.text : ''
+      }
+      return record.text.trim()
+    })
     .filter(Boolean)
     .join('\n\n')
+
+  useEffect(() => {
+    if (!latestRecord || !latestRecordText) {
+      setTypingState(null)
+      return
+    }
+
+    const latestRecordId = latestRecord.id
+    const stepSize = Math.max(1, Math.ceil(latestRecordText.length / 12))
+    let visibleLength = 0
+
+    function tick() {
+      visibleLength = Math.min(latestRecordText.length, visibleLength + stepSize)
+      setTypingState({
+        id: latestRecordId,
+        text: latestRecordText.slice(0, visibleLength),
+      })
+      if (visibleLength >= latestRecordText.length) {
+        window.clearInterval(timer)
+      }
+    }
+
+    setTypingState({ id: latestRecordId, text: '' })
+    const timer = window.setInterval(tick, 16)
+    tick()
+
+    return () => window.clearInterval(timer)
+  }, [latestRecord?.id, latestRecordText])
 
   useLayoutEffect(() => {
     const bubble = bubbleRef.current
     if (!bubble) return
     bubble.scrollTop = bubble.scrollHeight
-  }, [recordAnchor])
+  }, [recordAnchor, thinkingMarkdown.length])
 
   return (
     <article

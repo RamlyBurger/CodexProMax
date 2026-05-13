@@ -636,7 +636,7 @@ describe('App', () => {
 
     const thinking = await screen.findByTestId('ai-thinking-process')
     expect(thinking.querySelectorAll('.ai-thinking-label-dots span')).toHaveLength(3)
-    expect(thinking).toHaveTextContent('Checking the implementation path.')
+    await waitFor(() => expect(thinking).toHaveTextContent('Checking the implementation path.'))
     expect(thinking).toHaveTextContent('Assistant update 2')
     expect(thinking).not.toHaveTextContent('Dropped assistant update')
     expect(thinking).not.toHaveTextContent('Raw reasoning should stay hidden')
