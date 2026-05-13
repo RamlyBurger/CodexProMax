@@ -1578,6 +1578,9 @@ code,
 
 .profile-avatar {
   overflow: hidden;
+}
+
+.user-avatar.profile-avatar {
   border: 1px solid var(--border);
 }
 
