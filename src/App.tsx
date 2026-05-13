@@ -3559,10 +3559,7 @@ function ConversationUsageStrip({ usage }: { usage: CodexLiveContextUsage }) {
             <strong>{formatPercent(contextPercent)} used</strong>
           </div>
           <div className="conversation-context-track" aria-hidden="true">
-            <span
-              className="liquid-bar liquid-bar-context"
-              style={{ width: `${contextPercent}%`, animationDuration: '2.5s' }}
-            />
+            <span className="liquid-bar" style={{ width: `${contextPercent}%`, animationDuration: '2.5s' }} />
           </div>
           <small>
             {formatTokenCount(usage.usedTokens)} of {formatTokenCount(usage.contextWindow)} used
@@ -3581,7 +3578,7 @@ function ConversationUsageStrip({ usage }: { usage: CodexLiveContextUsage }) {
               </div>
               <div className="conversation-rate-track" aria-hidden="true">
                 <span
-                  className={`liquid-bar liquid-bar-${limit.key}`}
+                  className="liquid-bar"
                   style={{ width: `${Math.max(0, Math.min(100, limit.percent))}%`, animationDuration: '2.5s' }}
                 />
               </div>
@@ -3879,7 +3876,7 @@ function CodexLiveContextMeter({ usage }: { usage: CodexLiveContextUsage }) {
             </div>
             <div className="codex-live-gauge-bar" aria-hidden="true">
               <span
-                className={`liquid-bar liquid-bar-${gauge.key}`}
+                className="liquid-bar"
                 style={{ width: `${Math.max(0, Math.min(100, gauge.percent))}%`, animationDuration: '2.5s' }}
               />
             </div>
