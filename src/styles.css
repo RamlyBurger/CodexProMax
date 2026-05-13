@@ -1327,6 +1327,10 @@ code,
 
 .ai-thinking-bubble {
   width: min(760px, 100%);
+  height: 280px;
+  max-height: 42vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: 16px 16px 16px 4px;
@@ -4411,6 +4415,10 @@ button:focus-visible,
   .scroll-bottom-button-layer {
     bottom: 12px;
     padding-right: 14px;
+  }
+
+  .ai-thinking-bubble {
+    height: 220px;
   }
 
   .message {

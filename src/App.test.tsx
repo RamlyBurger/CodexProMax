@@ -587,19 +587,23 @@ describe('App', () => {
             sizeBytes: 4096,
           },
           records: [
-            {
-              id: 'assistant-message-1',
-              index: 0,
-              timestamp: '2026-05-07T00:02:00.000Z',
+            ...Array.from({ length: 31 }, (_, index) => ({
+              id: `assistant-message-${index + 1}`,
+              index,
+              timestamp: `2026-05-07T00:02:${String(index).padStart(2, '0')}.000Z`,
               kind: 'message',
               title: 'Assistant',
-              text: 'Checking the implementation path.',
+              text: index === 0
+                ? 'Dropped assistant update'
+                : index === 30
+                  ? 'Checking the implementation path.'
+                  : `Assistant update ${index + 1}`,
               callId: '',
               status: 'completed',
-            },
+            })),
             {
               id: 'reasoning-1',
-              index: 1,
+              index: 31,
               timestamp: '2026-05-07T00:02:30.000Z',
               kind: 'reasoning',
               title: 'Thinking',
@@ -609,7 +613,7 @@ describe('App', () => {
             },
             {
               id: 'tool-1',
-              index: 2,
+              index: 32,
               timestamp: '2026-05-07T00:03:00.000Z',
               kind: 'tool-call',
               title: 'Shell command',
@@ -633,6 +637,8 @@ describe('App', () => {
     const thinking = await screen.findByTestId('ai-thinking-process')
     expect(thinking.querySelectorAll('.ai-thinking-label-dots span')).toHaveLength(3)
     expect(thinking).toHaveTextContent('Checking the implementation path.')
+    expect(thinking).toHaveTextContent('Assistant update 2')
+    expect(thinking).not.toHaveTextContent('Dropped assistant update')
     expect(thinking).not.toHaveTextContent('Raw reasoning should stay hidden')
     expect(thinking).not.toHaveTextContent('Tool output should stay hidden')
     expect(screen.queryByTestId('ai-loading-indicator')).not.toBeInTheDocument()

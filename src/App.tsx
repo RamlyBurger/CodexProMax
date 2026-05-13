@@ -325,7 +325,7 @@ function App() {
           setConversationThinkingRecords(
             liveHistory.records
               .filter(isConversationThinkingRecord)
-              .slice(-6),
+              .slice(-30),
           )
         }
       } catch {
@@ -2198,10 +2198,20 @@ function AiLoadingMessage() {
 }
 
 function AiThinkingMessage({ records }: { records: CodexLiveRecord[] }) {
+  const bubbleRef = useRef<HTMLDivElement | null>(null)
+  const recordAnchor = records
+    .map((record) => `${record.id}:${record.text.length}`)
+    .join('|')
   const thinkingMarkdown = records
     .map((record) => record.text.trim())
     .filter(Boolean)
     .join('\n\n')
+
+  useLayoutEffect(() => {
+    const bubble = bubbleRef.current
+    if (!bubble) return
+    bubble.scrollTop = bubble.scrollHeight
+  }, [recordAnchor])
 
   return (
     <article
@@ -2221,7 +2231,7 @@ function AiThinkingMessage({ records }: { records: CodexLiveRecord[] }) {
             </span>
           </span>
         </div>
-        <div className="ai-thinking-bubble">
+        <div className="ai-thinking-bubble" ref={bubbleRef}>
           <MarkdownPanel
             markdown={thinkingMarkdown}
             safety={null}
