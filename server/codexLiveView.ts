@@ -13,8 +13,11 @@ import type {
 
 const DEFAULT_SESSION_LIMIT = 100
 const MAX_SESSION_LIMIT = 500
-const DEFAULT_TAIL_BYTES = 384 * 1024
 const MAX_TAIL_BYTES = 2 * 1024 * 1024
+const DEFAULT_TAIL_BYTES = MAX_TAIL_BYTES
+const MAX_HISTORY_SCAN_BYTES = 32 * 1024 * 1024
+const HISTORY_SCAN_CHUNK_BYTES = 256 * 1024
+const MAX_JSONL_RECORD_BYTES = MAX_TAIL_BYTES
 const DEFAULT_RECORD_LIMIT = 200
 const MAX_RECORD_LIMIT = 500
 
@@ -54,22 +57,8 @@ export async function readCodexLiveHistory(
 
   const requestedTailBytes = clampInt(options.tailBytes, 16 * 1024, MAX_TAIL_BYTES, DEFAULT_TAIL_BYTES)
   const recordLimit = clampInt(options.records, 1, MAX_RECORD_LIMIT, DEFAULT_RECORD_LIMIT)
-  const start = Math.max(0, stats.size - requestedTailBytes)
-  const length = stats.size - start
-  const file = await fs.open(filePath, 'r')
-  let buffer: Buffer
-  try {
-    buffer = Buffer.alloc(length)
-    await file.read(buffer, 0, length, start)
-  } finally {
-    await file.close()
-  }
-
-  let lines = buffer.toString('utf8').split(/\r?\n/)
-  if (start > 0) {
-    lines = lines.slice(1)
-  }
-  lines = lines.filter((line) => line.trim()).slice(-recordLimit)
+  const recentLines = await readRecentJsonlLines(filePath, stats.size, recordLimit, requestedTailBytes)
+  const lines = recentLines.lines
   const records: CodexLiveRecord[] = []
   const callsById = new Map<string, CodexLiveRecord>()
   let context: CodexLiveContextUsage | null = null
@@ -109,9 +98,9 @@ export async function readCodexLiveHistory(
     session: toSessionSummary(rootPath, filePath, stats),
     records: groupActionRuns(records),
     context,
-    tailBytes: length,
+    tailBytes: recentLines.bytesRead,
     totalSizeBytes: stats.size,
-    truncated: start > 0,
+    truncated: recentLines.truncated,
   }
 }
 
@@ -356,6 +345,89 @@ function resolveSessionPath(rootPath: string, id: string) {
     throw new Error('Codex session path escapes the sessions directory.')
   }
   return filePath
+}
+
+async function readRecentJsonlLines(
+  filePath: string,
+  fileSize: number,
+  lineLimit: number,
+  requestedTailBytes: number,
+) {
+  if (fileSize <= 0 || lineLimit <= 0) {
+    return { lines: [], bytesRead: 0, truncated: false }
+  }
+
+  const maxScanBytes = Math.min(fileSize, Math.max(requestedTailBytes, MAX_HISTORY_SCAN_BYTES))
+  const linesReversed: string[] = []
+  const file = await fs.open(filePath, 'r')
+  let position = fileSize
+  let bytesRead = 0
+  let currentLineSegments: Buffer[] = []
+  let currentLineBytes = 0
+  let skippingOversizedLine = false
+  let skippedOversizedLine = false
+
+  function addCurrentLineSegment(segment: Buffer) {
+    if (segment.length === 0 || skippingOversizedLine) return
+    currentLineBytes += segment.length
+    if (currentLineBytes > MAX_JSONL_RECORD_BYTES) {
+      currentLineSegments = []
+      skippingOversizedLine = true
+      skippedOversizedLine = true
+      return
+    }
+    currentLineSegments.unshift(segment)
+  }
+
+  function finishCurrentLine() {
+    if (!skippingOversizedLine && currentLineBytes > 0) {
+      const line = Buffer.concat(currentLineSegments, currentLineBytes).toString('utf8').replace(/\r$/, '')
+      if (line.trim()) {
+        linesReversed.push(line)
+      }
+    }
+    currentLineSegments = []
+    currentLineBytes = 0
+    skippingOversizedLine = false
+  }
+
+  try {
+    while (position > 0 && bytesRead < maxScanBytes && linesReversed.length < lineLimit) {
+      const readLength = Math.min(HISTORY_SCAN_CHUNK_BYTES, position, maxScanBytes - bytesRead)
+      const readStart = position - readLength
+      const buffer = Buffer.alloc(readLength)
+      await file.read(buffer, 0, readLength, readStart)
+      position = readStart
+      bytesRead += readLength
+
+      let segmentEnd = readLength
+      for (let index = readLength - 1; index >= 0 && linesReversed.length < lineLimit; index -= 1) {
+        if (buffer[index] !== 0x0a) {
+          continue
+        }
+
+        addCurrentLineSegment(buffer.subarray(index + 1, segmentEnd))
+        finishCurrentLine()
+        segmentEnd = index
+      }
+
+      if (segmentEnd > 0 && linesReversed.length < lineLimit) {
+        addCurrentLineSegment(buffer.subarray(0, segmentEnd))
+      }
+    }
+
+    if (position === 0 && linesReversed.length < lineLimit) {
+      finishCurrentLine()
+    }
+
+    return {
+      lines: linesReversed.reverse(),
+      bytesRead,
+      truncated: position > 0 || skippedOversizedLine || currentLineBytes > 0 || skippingOversizedLine,
+    }
+  } finally {
+    await file.close()
+  }
 }
 
 function parseCreatedAt(filePath: string) {

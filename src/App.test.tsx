@@ -536,6 +536,11 @@ describe('App', () => {
     expect(thinking).not.toHaveTextContent('Raw reasoning should stay hidden')
     expect(thinking).not.toHaveTextContent('Tool output should stay hidden')
     expect(screen.queryByTestId('ai-loading-indicator')).not.toBeInTheDocument()
+    const liveHistoryRequest = vi.mocked(fetch).mock.calls
+      .map(([url]) => String(url))
+      .find((requestUrl) => requestUrl.startsWith('/api/codex-live/sessions/session-run-a?'))
+    expect(liveHistoryRequest).toContain('records=500')
+    expect(liveHistoryRequest).toContain('tailBytes=2097152')
   })
 
   it('opens the left sidebar profile menu', async () => {

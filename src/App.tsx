@@ -294,7 +294,7 @@ function App() {
           return
         }
 
-        const liveHistory = await fetchCodexLiveHistory(liveSession.id, 200)
+        const liveHistory = await fetchCodexLiveHistory(liveSession.id)
         if (!ignore) {
           setConversationLiveUsage(liveHistory.context)
           setConversationThinkingRecords(

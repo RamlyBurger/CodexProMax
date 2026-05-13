@@ -188,6 +188,79 @@ describe('Codex rollout JSONL parser', () => {
     expect(history.records[0].text).toContain('Test Files  4 passed')
   })
 
+  it('keeps assistant messages around oversized image output records', async () => {
+    const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-live-'))
+    process.env.CODEX_SESSIONS_ROOT = rootPath
+    const relativePath = '2026/05/12/rollout-2026-05-12T09-05-54-session.jsonl'
+    const filePath = path.join(rootPath, ...relativePath.split('/'))
+    await fs.mkdir(path.dirname(filePath), { recursive: true })
+    const oversizedImageOutput = JSON.stringify([
+      {
+        type: 'input_image',
+        image_url: `data:image/png;base64,${'a'.repeat((2 * 1024 * 1024) + 1024)}`,
+      },
+    ])
+    await fs.writeFile(filePath, [
+      JSON.stringify({
+        timestamp: '2026-05-12T09:05:00.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'user_message',
+          message: 'Verify the generated image.',
+        },
+      }),
+      JSON.stringify({
+        timestamp: '2026-05-12T09:05:01.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: 'Generating the verification screenshot.' }],
+        },
+      }),
+      JSON.stringify({
+        timestamp: '2026-05-12T09:05:02.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          name: 'view_image',
+          arguments: JSON.stringify({ path: 'C:\\Users\\ramly\\Desktop\\image.png' }),
+          call_id: 'call_image',
+        },
+      }),
+      JSON.stringify({
+        timestamp: '2026-05-12T09:05:03.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call_output',
+          call_id: 'call_image',
+          output: oversizedImageOutput,
+        },
+      }),
+      JSON.stringify({
+        timestamp: '2026-05-12T09:05:04.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: 'The generated verification screenshot shows the expected evidence.' }],
+        },
+      }),
+    ].join('\n'))
+
+    const id = Buffer.from(relativePath, 'utf8').toString('base64url')
+    const history = await readCodexLiveHistory(id, { records: 10, tailBytes: 16 * 1024 })
+    const assistantMessages = history.records
+      .filter((record) => record.kind === 'message' && record.title === 'Assistant')
+      .map((record) => record.text)
+
+    expect(assistantMessages).toEqual([
+      'Generating the verification screenshot.',
+      'The generated verification screenshot shows the expected evidence.',
+    ])
+    expect(history.truncated).toBe(true)
+  })
+
   it('keeps timed-out wait-for-review calls in waiting state', async () => {
     const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-live-'))
     process.env.CODEX_SESSIONS_ROOT = rootPath

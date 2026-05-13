@@ -118,13 +118,17 @@ export async function fetchCodexLiveSessions(): Promise<CodexLiveSessionsRespons
   return parseJsonResponse<CodexLiveSessionsResponse>(response)
 }
 
+export const CODEX_LIVE_HISTORY_RECORD_LIMIT = 500
+export const CODEX_LIVE_HISTORY_TAIL_BYTES = 2 * 1024 * 1024
+
 export async function fetchCodexLiveHistory(
   sessionId: string,
-  records = 200,
+  records = CODEX_LIVE_HISTORY_RECORD_LIMIT,
+  tailBytes = CODEX_LIVE_HISTORY_TAIL_BYTES,
 ): Promise<CodexLiveHistoryResponse> {
   const response = await fetch(`/api/codex-live/sessions/${encodeURIComponent(sessionId)}?${new URLSearchParams({
     records: String(records),
-    tailBytes: String(384 * 1024),
+    tailBytes: String(tailBytes),
   })}`)
   return parseJsonResponse<CodexLiveHistoryResponse>(response)
 }
