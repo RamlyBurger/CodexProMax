@@ -64,6 +64,34 @@ const FILE_ICONS: Record<ProtocolTextFile, string> = {
   'events.ndjson': 'ri-stack-line',
 }
 
+const ATTACHMENT_KIND_ICONS: Record<AttachmentMeta['kind'], string> = {
+  image: 'ri-image-2-line',
+  pdf: 'ri-file-pdf-2-line',
+  text: 'ri-file-text-line',
+  code: 'ri-file-code-line',
+  audio: 'ri-file-music-line',
+  video: 'ri-file-video-line',
+  archive: 'ri-file-zip-line',
+  document: 'ri-file-word-line',
+  spreadsheet: 'ri-file-excel-line',
+  presentation: 'ri-file-ppt-line',
+  file: 'ri-file-line',
+}
+
+const ATTACHMENT_KIND_LABELS: Record<AttachmentMeta['kind'], string> = {
+  image: 'Image',
+  pdf: 'PDF',
+  text: 'Text',
+  code: 'Code',
+  audio: 'Audio',
+  video: 'Video',
+  archive: 'Archive',
+  document: 'Document',
+  spreadsheet: 'Spreadsheet',
+  presentation: 'Presentation',
+  file: 'File',
+}
+
 const PROFILE_MENU_ITEMS = [
   { label: 'Add teammates', icon: 'ri-group-line', action: 'teammates' },
   { label: 'Workspace settings', icon: 'ri-building-2-line', action: 'workspace-settings' },
@@ -587,7 +615,7 @@ function App() {
     }
 
     setPending('upload')
-    setUploadingAttachmentName(file.name || 'image attachment')
+    setUploadingAttachmentName(file.name || 'attachment')
     setActionError(null)
 
     try {
@@ -721,7 +749,7 @@ function App() {
   }
 
   async function handleComposerPaste(event: ClipboardEvent<HTMLTextAreaElement>): Promise<AttachmentMeta | null> {
-    const file = getPastedImageFile(event.clipboardData)
+    const file = getPastedAttachmentFile(event.clipboardData)
     if (!file) {
       return null
     }
@@ -935,9 +963,9 @@ function App() {
       return
     }
 
-    const file = Array.from(event.dataTransfer.files).find((item) => item.type.startsWith('image/'))
+    const file = Array.from(event.dataTransfer.files).find((item) => item.size > 0)
     if (!file) {
-      setActionError('Only image attachments are supported.')
+      setActionError('Drop a file to attach.')
       return
     }
 
@@ -2816,12 +2844,11 @@ function ReviewComposer({
       />
       <div className="composer">
         <div className="composer-inner">
-          <label className="composer-btn" title={pending === 'upload' ? 'Uploading...' : 'Attach review image'}>
+          <label className="composer-btn" title={pending === 'upload' ? 'Uploading...' : 'Attach file'}>
             <i className={pending === 'upload' ? 'ri-loader-4-line' : 'ri-attachment-2'} aria-hidden="true" />
-            <span className="sr-only">{pending === 'upload' ? 'Uploading...' : 'Attach review image'}</span>
+            <span className="sr-only">{pending === 'upload' ? 'Uploading...' : 'Attach file'}</span>
             <input
               type="file"
-              accept="image/png,image/jpeg,image/gif,image/webp,image/bmp,image/avif"
               disabled={Boolean(pending)}
               onChange={(event) => {
                 onUpload(event.target.files?.[0])
@@ -2941,38 +2968,40 @@ function QueuedInstructionList({
   )
 }
 
-function getPastedImageFile(data: DataTransfer): File | null {
+function getPastedAttachmentFile(data: DataTransfer): File | null {
   for (const item of Array.from(data.items)) {
-    if (item.kind !== 'file' || !item.type.startsWith('image/')) {
+    if (item.kind !== 'file') {
       continue
     }
 
     const file = item.getAsFile()
     if (file) {
-      return nameClipboardImage(file)
+      return nameClipboardAttachment(file)
     }
   }
 
   return null
 }
 
-function nameClipboardImage(file: File): File {
+function nameClipboardAttachment(file: File): File {
   if (file.name) {
     return file
   }
 
-  const extension = imageFileExtension(file.type)
+  const extension = attachmentFileExtension(file.type)
   const stamp = new Date().toISOString().replace(/[:.]/g, '-')
-  return new File([file], `pasted-image-${stamp}.${extension}`, {
+  return new File([file], `pasted-attachment-${stamp}.${extension}`, {
     type: file.type,
     lastModified: file.lastModified || Date.now(),
   })
 }
 
-function imageFileExtension(mimeType: string): string {
+function attachmentFileExtension(mimeType: string): string {
   switch (mimeType) {
     case 'image/jpeg':
       return 'jpg'
+    case 'image/png':
+      return 'png'
     case 'image/gif':
       return 'gif'
     case 'image/webp':
@@ -2981,9 +3010,162 @@ function imageFileExtension(mimeType: string): string {
       return 'bmp'
     case 'image/avif':
       return 'avif'
+    case 'application/pdf':
+      return 'pdf'
+    case 'application/json':
+      return 'json'
+    case 'application/msword':
+      return 'doc'
+    case 'application/vnd.ms-excel':
+      return 'xls'
+    case 'application/vnd.ms-powerpoint':
+      return 'ppt'
+    case 'application/vnd.openxmlformats-officedocument.presentationml.presentation':
+      return 'pptx'
+    case 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+      return 'xlsx'
+    case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+      return 'docx'
+    case 'application/zip':
+      return 'zip'
+    case 'text/csv':
+      return 'csv'
+    case 'text/markdown':
+      return 'md'
+    case 'text/plain':
+      return 'txt'
     default:
-      return 'png'
+      return mimeType.startsWith('text/') ? 'txt' : 'bin'
   }
+}
+
+function isAttachmentKind(value: unknown): value is AttachmentMeta['kind'] {
+  return typeof value === 'string' && value in ATTACHMENT_KIND_ICONS
+}
+
+function getAttachmentExtension(fileName: string): string {
+  const match = /\.([a-zA-Z0-9]+)$/.exec(fileName)
+  return match ? `.${match[1].toLowerCase()}` : ''
+}
+
+function inferAttachmentMimeType(fileName: string): string {
+  switch (getAttachmentExtension(fileName)) {
+    case '.avif':
+      return 'image/avif'
+    case '.bmp':
+      return 'image/bmp'
+    case '.csv':
+      return 'text/csv'
+    case '.doc':
+      return 'application/msword'
+    case '.docx':
+      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    case '.gif':
+      return 'image/gif'
+    case '.html':
+    case '.htm':
+      return 'text/html'
+    case '.jpeg':
+    case '.jpg':
+      return 'image/jpeg'
+    case '.js':
+      return 'text/javascript'
+    case '.json':
+      return 'application/json'
+    case '.md':
+      return 'text/markdown'
+    case '.mp3':
+      return 'audio/mpeg'
+    case '.mp4':
+      return 'video/mp4'
+    case '.pdf':
+      return 'application/pdf'
+    case '.png':
+      return 'image/png'
+    case '.ppt':
+      return 'application/vnd.ms-powerpoint'
+    case '.pptx':
+      return 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    case '.svg':
+      return 'image/svg+xml'
+    case '.txt':
+      return 'text/plain'
+    case '.wav':
+      return 'audio/wav'
+    case '.webm':
+      return 'video/webm'
+    case '.webp':
+      return 'image/webp'
+    case '.xls':
+      return 'application/vnd.ms-excel'
+    case '.xlsx':
+      return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    case '.xml':
+      return 'application/xml'
+    case '.zip':
+      return 'application/zip'
+    default:
+      return 'application/octet-stream'
+  }
+}
+
+function getAttachmentMimeType(attachment: AttachmentMeta): string {
+  const mimeType = (attachment as Partial<AttachmentMeta>).mimeType?.trim().toLowerCase()
+  return mimeType && mimeType !== 'application/octet-stream'
+    ? mimeType
+    : inferAttachmentMimeType(attachment.name)
+}
+
+function getAttachmentKind(attachment: AttachmentMeta): AttachmentMeta['kind'] {
+  const providedKind = (attachment as Partial<AttachmentMeta>).kind
+  if (isAttachmentKind(providedKind)) {
+    return providedKind
+  }
+
+  const mimeType = getAttachmentMimeType(attachment)
+  const extension = getAttachmentExtension(attachment.name)
+
+  if (mimeType.startsWith('image/')) return 'image'
+  if (mimeType.startsWith('video/')) return 'video'
+  if (mimeType.startsWith('audio/')) return 'audio'
+  if (mimeType === 'application/pdf') return 'pdf'
+  if (['.7z', '.gz', '.rar', '.tar', '.tgz', '.zip'].includes(extension)) return 'archive'
+  if (['.csv', '.ods', '.xls', '.xlsx'].includes(extension)) return 'spreadsheet'
+  if (['.odp', '.ppt', '.pptx'].includes(extension)) return 'presentation'
+  if (['.doc', '.docx', '.odt', '.rtf'].includes(extension)) return 'document'
+  if (
+    ['.c', '.cpp', '.cs', '.css', '.go', '.java', '.js', '.json', '.jsx', '.php', '.py', '.rb', '.rs', '.sh', '.sql', '.ts', '.tsx', '.xml', '.yaml', '.yml'].includes(extension)
+    || mimeType.includes('json')
+    || mimeType.includes('javascript')
+    || mimeType.includes('typescript')
+    || mimeType.includes('xml')
+  ) {
+    return 'code'
+  }
+  if (mimeType.startsWith('text/')) return 'text'
+
+  return 'file'
+}
+
+function getAttachmentIcon(attachment: AttachmentMeta): string {
+  return ATTACHMENT_KIND_ICONS[getAttachmentKind(attachment)]
+}
+
+function getAttachmentKindLabel(attachment: AttachmentMeta): string {
+  return ATTACHMENT_KIND_LABELS[getAttachmentKind(attachment)]
+}
+
+function isImageAttachment(attachment: AttachmentMeta): boolean {
+  return getAttachmentKind(attachment) === 'image'
+}
+
+function canInlinePreviewAttachment(attachment: AttachmentMeta): boolean {
+  const kind = getAttachmentKind(attachment)
+  return kind === 'pdf' || kind === 'text' || kind === 'code'
+}
+
+function formatAttachmentMeta(attachment: AttachmentMeta): string {
+  return `${getAttachmentKindLabel(attachment)} / ${formatBytes(attachment.size)}`
 }
 
 function findMentionRange(value: string, caret: number): MentionRange | null {
@@ -3552,11 +3734,13 @@ function FileCard({
 
 function AttachmentThumbnail({ attachment }: { attachment: AttachmentMeta }) {
   const [failed, setFailed] = useState(false)
+  const imageAttachment = isImageAttachment(attachment)
+  const fallbackIcon = failed ? 'ri-file-warning-line' : getAttachmentIcon(attachment)
 
-  if (failed) {
+  if (!imageAttachment || failed) {
     return (
-      <span className="attachment-thumb fallback" aria-hidden="true">
-        <i className="ri-image-2-line" />
+      <span className={`attachment-thumb fallback attachment-kind-${getAttachmentKind(attachment)}`} aria-hidden="true">
+        <i className={fallbackIcon} />
       </span>
     )
   }
@@ -3584,7 +3768,7 @@ function AttachmentList({
   if (attachments.length === 0) {
     return (
       <p className="empty-state compact">
-        <i className="ri-image-line" aria-hidden="true" />
+        <i className="ri-attachment-2" aria-hidden="true" />
         No attachments yet.
       </p>
     )
@@ -3621,7 +3805,7 @@ function AttachmentList({
               >
                 {attachment.name}
               </button>
-              <div className="file-meta">{deleting ? 'deleting...' : formatBytes(attachment.size)}</div>
+              <div className="file-meta">{deleting ? 'deleting...' : formatAttachmentMeta(attachment)}</div>
             </div>
             <button
               type="button"
@@ -4048,6 +4232,14 @@ function AttachmentPreview({
   useEscapeToClose(onClose)
   const currentIndex = attachments.findIndex((item) => item.url === attachment.url)
   const showGalleryControls = attachments.length > 1 && currentIndex >= 0
+  const attachmentKind = getAttachmentKind(attachment)
+  const imageAttachment = attachmentKind === 'image'
+  const inlinePreview = canInlinePreviewAttachment(attachment)
+  const previewClassName = [
+    'attachment-preview',
+    `attachment-${attachmentKind}-preview`,
+    showGalleryControls ? 'has-gallery-controls' : '',
+  ].filter(Boolean).join(' ')
 
   function selectRelativeAttachment(offset: number) {
     if (!showGalleryControls) {
@@ -4070,7 +4262,7 @@ function AttachmentPreview({
   return (
     <div className="preview-backdrop" role="presentation" onClick={onClose}>
       <section
-        className={`attachment-preview image-gallery-preview ${showGalleryControls ? 'has-gallery-controls' : ''}`}
+        className={previewClassName}
         role="dialog"
         aria-modal="true"
         aria-label={attachment.name}
@@ -4082,8 +4274,11 @@ function AttachmentPreview({
             <small>{formatBytes(attachment.size)}</small>
           </div>
           <div className="preview-actions">
-            <a href={attachment.url} target="_blank" rel="noreferrer" className="icon-btn" aria-label="Open image">
+            <a href={attachment.url} target="_blank" rel="noreferrer" className="icon-btn" aria-label="Open file" title="Open file">
               <i className="ri-external-link-line" aria-hidden="true" />
+            </a>
+            <a href={attachment.url} download={attachment.name} className="icon-btn" aria-label="Download file" title="Download file">
+              <i className="ri-download-line" aria-hidden="true" />
             </a>
             <button type="button" className="icon-btn" onClick={onClose} aria-label="Close preview" autoFocus>
               <i className="ri-close-line" aria-hidden="true" />
@@ -4099,14 +4294,36 @@ function AttachmentPreview({
                 event.stopPropagation()
                 selectRelativeAttachment(-1)
               }}
-              aria-label="Previous image"
-              title="Previous image"
+              aria-label="Previous attachment"
+              title="Previous attachment"
             >
               <i className="ri-arrow-left-s-line" aria-hidden="true" />
             </button>
           )}
           <div className="preview-stage" onClick={keepPreviewOpen}>
-            <img src={attachment.url} alt={attachment.name} />
+            {imageAttachment ? (
+              <img src={attachment.url} alt={attachment.name} />
+            ) : inlinePreview ? (
+              <iframe src={attachment.url} title={`Preview ${attachment.name}`} />
+            ) : (
+              <div className="attachment-file-preview">
+                <span className={`attachment-file-icon attachment-kind-${attachmentKind}`} aria-hidden="true">
+                  <i className={getAttachmentIcon(attachment)} />
+                </span>
+                <div className="attachment-file-details">
+                  <strong>{getAttachmentKindLabel(attachment)}</strong>
+                  <span>{formatBytes(attachment.size)}</span>
+                </div>
+                <div className="attachment-file-actions">
+                  <a href={attachment.url} target="_blank" rel="noreferrer">
+                    Open
+                  </a>
+                  <a href={attachment.url} download={attachment.name}>
+                    Download
+                  </a>
+                </div>
+              </div>
+            )}
           </div>
           {showGalleryControls && (
             <button
@@ -4116,15 +4333,15 @@ function AttachmentPreview({
                 event.stopPropagation()
                 selectRelativeAttachment(1)
               }}
-              aria-label="Next image"
-              title="Next image"
+              aria-label="Next attachment"
+              title="Next attachment"
             >
               <i className="ri-arrow-right-s-line" aria-hidden="true" />
             </button>
           )}
         </div>
         {showGalleryControls && (
-          <div className="attachment-preview-strip" aria-label="Image list" onClick={keepPreviewOpen}>
+          <div className="attachment-preview-strip" aria-label="Attachment list" onClick={keepPreviewOpen}>
             {attachments.map((item, index) => {
               const active = item.url === attachment.url
               return (
@@ -4132,7 +4349,7 @@ function AttachmentPreview({
                   type="button"
                   className={`attachment-preview-strip-item ${active ? 'active' : ''}`}
                   onClick={() => onSelect(item)}
-                  aria-label={`Preview image ${index + 1}: ${item.name}`}
+                  aria-label={`Preview attachment ${index + 1}: ${item.name}`}
                   aria-current={active ? 'true' : undefined}
                   title={item.name}
                   key={item.url}

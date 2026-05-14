@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
-import type { ManagerSnapshot, Snapshot, Teammate } from './shared/protocol'
+import type { AttachmentMeta, ManagerSnapshot, Snapshot, Teammate } from './shared/protocol'
 import { DEFAULT_TEAMMATES, TEAMMATE_AVATAR_URLS } from './shared/protocol'
 
 class MockEventSource {
@@ -1555,7 +1555,7 @@ describe('App', () => {
     expect(textarea.selectionEnd).toBe(mentionEnd)
   })
 
-  it('uploads a pasted image attachment from the instruction field', async () => {
+  it('uploads a pasted attachment from the instruction field', async () => {
     const fetchMock = vi.mocked(fetch)
     render(<App />)
     await getEventSource()
@@ -1587,7 +1587,7 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: /mention attachment uploaded\.png/i })).toBeInTheDocument()
   })
 
-  it('shows upload progress while attaching an image', async () => {
+  it('shows upload progress while attaching a file', async () => {
     render(<App />)
     await getEventSource()
 
@@ -1596,7 +1596,7 @@ describe('App', () => {
     vi.mocked(fetch).mockReturnValueOnce(upload.promise)
 
     const file = new File(['image'], 'slow-upload.png', { type: 'image/png' })
-    fireEvent.change(await screen.findByLabelText(/attach review image/i), {
+    fireEvent.change(await screen.findByLabelText(/attach file/i), {
       target: { files: [file] },
     })
 
@@ -1797,12 +1797,12 @@ describe('App', () => {
     expect(table.parentElement).toHaveClass('markdown-table-scroll')
   })
 
-  it('opens uploaded attachments in an image preview', async () => {
+  it('opens uploaded image attachments in a preview', async () => {
     render(<App />)
     await getEventSource()
 
     const file = new File(['image'], 'review.png', { type: 'image/png' })
-    fireEvent.change(await screen.findByLabelText(/attach review image/i), {
+    fireEvent.change(await screen.findByLabelText(/attach file/i), {
       target: { files: [file] },
     })
 
@@ -1818,6 +1818,28 @@ describe('App', () => {
 
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(screen.queryByRole('dialog', { name: 'uploaded.png' })).not.toBeInTheDocument()
+  })
+
+  it('opens non-image attachments in a file preview', async () => {
+    const attachments = [attachmentFactory('archive.zip')]
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse(managerFactory()))
+      .mockResolvedValueOnce(jsonResponse(snapshotFactory({ attachments })))
+
+    render(<App />)
+    await getEventSource()
+
+    const sidebar = screen.getByLabelText('Protocol details')
+    fireEvent.click(await within(sidebar).findByRole('button', { name: /preview archive\.zip/i }))
+
+    const dialog = screen.getByRole('dialog', { name: 'archive.zip' })
+    expect(within(dialog).queryByRole('img')).not.toBeInTheDocument()
+    expect(within(dialog).getByText('Archive')).toBeInTheDocument()
+    expect(within(dialog).getByRole('link', { name: 'Open' })).toHaveAttribute(
+      'href',
+      '/api/runs/run-a/attachments/archive.zip',
+    )
+    expect(within(dialog).getByRole('link', { name: 'Download' })).toHaveAttribute('download', 'archive.zip')
   })
 
   it('shows attachment image previews in the right sidebar', async () => {
@@ -1902,15 +1924,15 @@ describe('App', () => {
     fireEvent.click(await within(sidebar).findByRole('button', { name: /preview first\.png/i }))
 
     let dialog = screen.getByRole('dialog', { name: 'first.png' })
-    expect(within(dialog).getByRole('button', { name: 'Previous image' })).toBeInTheDocument()
-    expect(within(dialog).getByRole('button', { name: 'Next image' })).toBeInTheDocument()
-    expect(within(dialog).getByLabelText('Image list')).toBeInTheDocument()
-    expect(within(dialog).getByRole('button', { name: /preview image 1: first\.png/i })).toHaveAttribute(
+    expect(within(dialog).getByRole('button', { name: 'Previous attachment' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Next attachment' })).toBeInTheDocument()
+    expect(within(dialog).getByLabelText('Attachment list')).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: /preview attachment 1: first\.png/i })).toHaveAttribute(
       'aria-current',
       'true',
     )
 
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Next image' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next attachment' }))
 
     dialog = await screen.findByRole('dialog', { name: 'second.png' })
     expect(dialog.querySelector('.preview-stage img')).toHaveAttribute(
@@ -1918,7 +1940,7 @@ describe('App', () => {
       '/api/runs/run-a/attachments/second.png',
     )
 
-    fireEvent.click(within(dialog).getByRole('button', { name: /preview image 1: first\.png/i }))
+    fireEvent.click(within(dialog).getByRole('button', { name: /preview attachment 1: first\.png/i }))
 
     dialog = await screen.findByRole('dialog', { name: 'first.png' })
     expect(dialog.querySelector('.preview-stage img')).toHaveAttribute(
@@ -2440,13 +2462,32 @@ function teammateFactory(): Teammate[] {
   return DEFAULT_TEAMMATES.map((teammate) => ({ ...teammate }))
 }
 
-function attachmentFactory(name: string) {
+function attachmentFactory(name: string, overrides: Partial<AttachmentMeta> = {}): AttachmentMeta {
+  const lowerName = name.toLowerCase()
+  const kind: AttachmentMeta['kind'] = lowerName.endsWith('.zip')
+    ? 'archive'
+    : lowerName.endsWith('.pdf')
+      ? 'pdf'
+      : lowerName.endsWith('.txt')
+        ? 'text'
+        : 'image'
+  const mimeType = kind === 'archive'
+    ? 'application/zip'
+    : kind === 'pdf'
+      ? 'application/pdf'
+      : kind === 'text'
+        ? 'text/plain'
+        : 'image/png'
+
   return {
     name,
     url: `/api/runs/run-a/attachments/${name}`,
     size: 42,
+    mimeType,
+    kind,
     mtimeMs: 1,
     mtimeIso: '2026-05-07T00:00:00.000Z',
+    ...overrides,
   }
 }
 

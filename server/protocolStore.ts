@@ -32,6 +32,75 @@ export const SESSION_FILE = 'session.md'
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 const OUTPUT_PREVIEW_BYTES = 4096
 
+const ATTACHMENT_MIME_BY_EXTENSION: Record<string, string> = {
+  '.7z': 'application/x-7z-compressed',
+  '.aac': 'audio/aac',
+  '.avif': 'image/avif',
+  '.bmp': 'image/bmp',
+  '.csv': 'text/csv',
+  '.doc': 'application/msword',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.gif': 'image/gif',
+  '.gz': 'application/gzip',
+  '.htm': 'text/html',
+  '.html': 'text/html',
+  '.jpeg': 'image/jpeg',
+  '.jpg': 'image/jpeg',
+  '.js': 'text/javascript',
+  '.json': 'application/json',
+  '.m4a': 'audio/mp4',
+  '.md': 'text/markdown',
+  '.mov': 'video/quicktime',
+  '.mp3': 'audio/mpeg',
+  '.mp4': 'video/mp4',
+  '.pdf': 'application/pdf',
+  '.png': 'image/png',
+  '.ppt': 'application/vnd.ms-powerpoint',
+  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  '.rar': 'application/vnd.rar',
+  '.svg': 'image/svg+xml',
+  '.tar': 'application/x-tar',
+  '.ts': 'text/typescript',
+  '.txt': 'text/plain',
+  '.wav': 'audio/wav',
+  '.webm': 'video/webm',
+  '.webp': 'image/webp',
+  '.xls': 'application/vnd.ms-excel',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.xml': 'application/xml',
+  '.zip': 'application/zip',
+}
+
+const CODE_ATTACHMENT_EXTENSIONS = new Set([
+  '.c',
+  '.cpp',
+  '.cs',
+  '.css',
+  '.go',
+  '.java',
+  '.js',
+  '.json',
+  '.jsx',
+  '.kt',
+  '.php',
+  '.py',
+  '.rb',
+  '.rs',
+  '.sh',
+  '.sql',
+  '.swift',
+  '.ts',
+  '.tsx',
+  '.xml',
+  '.yaml',
+  '.yml',
+])
+
+const ARCHIVE_ATTACHMENT_EXTENSIONS = new Set(['.7z', '.gz', '.rar', '.tar', '.tgz', '.zip'])
+const DOCUMENT_ATTACHMENT_EXTENSIONS = new Set(['.doc', '.docx', '.odt', '.rtf'])
+const PRESENTATION_ATTACHMENT_EXTENSIONS = new Set(['.odp', '.ppt', '.pptx'])
+const SPREADSHEET_ATTACHMENT_EXTENSIONS = new Set(['.csv', '.ods', '.xls', '.xlsx'])
+
 type SessionMessageCacheEntry = {
   mtimeMs: number
   size: number
@@ -39,15 +108,6 @@ type SessionMessageCacheEntry = {
 }
 
 const sessionMessageCache = new Map<string, SessionMessageCacheEntry>()
-
-export const ALLOWED_IMAGE_MIME_TYPES = new Set([
-  'image/png',
-  'image/jpeg',
-  'image/gif',
-  'image/webp',
-  'image/bmp',
-  'image/avif',
-])
 
 export type AtomicTextWriter = (filePath: string, contents: string) => Promise<void>
 
@@ -94,6 +154,70 @@ export function getProtocolPath(runPath: string, fileName: ProtocolTextFile): st
 
 export function getAttachmentsPath(runPath: string): string {
   return path.join(runPath, ATTACHMENTS_DIR_NAME)
+}
+
+function createAttachmentMeta(
+  runId: string,
+  fileName: string,
+  stats: { size: number, mtimeMs: number, mtime: Date },
+  mimeType?: string,
+): AttachmentMeta {
+  const normalizedMimeType = normalizeAttachmentMimeType(mimeType, fileName)
+  return {
+    name: fileName,
+    url: `/api/runs/${encodeURIComponent(runId)}/attachments/${encodeURIComponent(fileName)}`,
+    size: stats.size,
+    mimeType: normalizedMimeType,
+    kind: classifyAttachmentKind(fileName, normalizedMimeType),
+    mtimeMs: stats.mtimeMs,
+    mtimeIso: stats.mtime.toISOString(),
+  }
+}
+
+function normalizeAttachmentMimeType(mimeType: string | undefined, fileName: string): string {
+  const normalized = mimeType?.split(';')[0]?.trim().toLowerCase()
+  if (normalized && normalized !== 'application/octet-stream') {
+    return normalized
+  }
+
+  return inferAttachmentMimeType(fileName)
+}
+
+function inferAttachmentMimeType(fileName: string): string {
+  return ATTACHMENT_MIME_BY_EXTENSION[path.extname(fileName).toLowerCase()] ?? 'application/octet-stream'
+}
+
+function classifyAttachmentKind(fileName: string, mimeType: string): AttachmentMeta['kind'] {
+  const extension = path.extname(fileName).toLowerCase()
+
+  if (mimeType.startsWith('image/')) return 'image'
+  if (mimeType.startsWith('video/')) return 'video'
+  if (mimeType.startsWith('audio/')) return 'audio'
+  if (mimeType === 'application/pdf') return 'pdf'
+  if (ARCHIVE_ATTACHMENT_EXTENSIONS.has(extension) || mimeType.includes('zip') || mimeType.includes('compressed')) {
+    return 'archive'
+  }
+  if (SPREADSHEET_ATTACHMENT_EXTENSIONS.has(extension) || mimeType.includes('spreadsheet') || mimeType.includes('excel')) {
+    return 'spreadsheet'
+  }
+  if (PRESENTATION_ATTACHMENT_EXTENSIONS.has(extension) || mimeType.includes('presentation') || mimeType.includes('powerpoint')) {
+    return 'presentation'
+  }
+  if (DOCUMENT_ATTACHMENT_EXTENSIONS.has(extension) || mimeType.includes('wordprocessingml') || mimeType === 'application/msword') {
+    return 'document'
+  }
+  if (
+    CODE_ATTACHMENT_EXTENSIONS.has(extension)
+    || mimeType.includes('json')
+    || mimeType.includes('javascript')
+    || mimeType.includes('typescript')
+    || mimeType.includes('xml')
+  ) {
+    return 'code'
+  }
+  if (mimeType.startsWith('text/')) return 'text'
+
+  return 'file'
 }
 
 export async function pathExists(targetPath: string): Promise<boolean> {
@@ -224,13 +348,7 @@ export async function listAttachments(
       .map(async (entry) => {
         const filePath = path.join(attachmentsPath, entry.name)
         const stats = await fs.stat(filePath)
-        return {
-          name: entry.name,
-          url: `/api/runs/${encodeURIComponent(runId)}/attachments/${encodeURIComponent(entry.name)}`,
-          size: stats.size,
-          mtimeMs: stats.mtimeMs,
-          mtimeIso: stats.mtime.toISOString(),
-        }
+        return createAttachmentMeta(runId, entry.name, stats)
       }),
   )
 
@@ -345,6 +463,7 @@ export async function saveAttachment(
   runId: string,
   originalName: string,
   buffer: Buffer,
+  mimeType?: string,
 ): Promise<AttachmentMeta> {
   const attachmentsPath = getAttachmentsPath(runPath)
   await fs.mkdir(attachmentsPath, { recursive: true })
@@ -354,13 +473,7 @@ export async function saveAttachment(
   await atomicWriteBuffer(targetPath, buffer)
 
   const stats = await fs.stat(targetPath)
-  return {
-    name: safeName,
-    url: `/api/runs/${encodeURIComponent(runId)}/attachments/${encodeURIComponent(safeName)}`,
-    size: stats.size,
-    mtimeMs: stats.mtimeMs,
-    mtimeIso: stats.mtime.toISOString(),
-  }
+  return createAttachmentMeta(runId, safeName, stats, mimeType)
 }
 
 export async function deleteAttachment(runPath: string, fileName: string): Promise<void> {

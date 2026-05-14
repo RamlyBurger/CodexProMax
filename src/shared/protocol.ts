@@ -70,10 +70,25 @@ export interface FileMeta {
   size: number | null
 }
 
+export type AttachmentKind =
+  | 'image'
+  | 'pdf'
+  | 'text'
+  | 'code'
+  | 'audio'
+  | 'video'
+  | 'archive'
+  | 'document'
+  | 'spreadsheet'
+  | 'presentation'
+  | 'file'
+
 export interface AttachmentMeta {
   name: string
   url: string
   size: number
+  mimeType: string
+  kind: AttachmentKind
   mtimeMs: number
   mtimeIso: string
 }

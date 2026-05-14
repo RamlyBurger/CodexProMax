@@ -307,6 +307,10 @@ describe('Codex Pro Max multi-run API', () => {
     const runBExists = await pathExists(path.join(getRunPath(rootPath, 'run-b'), 'attachments'))
 
     expect(response.body.snapshot.runId).toBe('run-a')
+    expect(response.body.attachment).toMatchObject({
+      mimeType: 'image/png',
+      kind: 'image',
+    })
     expect(runAAttachments).toHaveLength(1)
     expect(runBExists).toBe(false)
   })
@@ -361,16 +365,21 @@ describe('Codex Pro Max multi-run API', () => {
     })
   })
 
-  it('rejects non-image and oversized uploads', async () => {
+  it('accepts non-image attachments and rejects oversized uploads', async () => {
     appHandle = createApp({ rootPath, startWatcher: false })
 
-    await request(appHandle.app)
+    const textResponse = await request(appHandle.app)
       .post('/api/runs/run-a/upload')
       .attach('file', Buffer.from('not an image'), {
         filename: 'notes.txt',
         contentType: 'text/plain',
       })
-      .expect(400)
+      .expect(201)
+
+    expect(textResponse.body.attachment).toMatchObject({
+      mimeType: 'text/plain',
+      kind: 'text',
+    })
 
     const oversized = Buffer.alloc(10 * 1024 * 1024 + 1)
     const response = await request(appHandle.app)

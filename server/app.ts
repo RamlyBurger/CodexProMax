@@ -13,7 +13,6 @@ import { HttpError } from './errors'
 import { listCodexLiveSessions, readCodexLiveHistory } from './codexLiveView'
 import { MultiRunSnapshotHub } from './snapshotHub'
 import {
-  ALLOWED_IMAGE_MIME_TYPES,
   DEFAULT_API_PORT,
   MAX_UPLOAD_BYTES,
   appendAuditEvent,
@@ -284,15 +283,12 @@ function uploadHandler(rootPath: string, hub: MultiRunSnapshotHub): RequestHandl
       throw new HttpError(400, 'Upload requires a file field named "file".')
     }
 
-    if (!ALLOWED_IMAGE_MIME_TYPES.has(file.mimetype)) {
-      throw new HttpError(400, 'Only raster image uploads are allowed.')
-    }
-
     await ensureRunMetadata(rootPath, runId)
-    const attachment = await saveAttachment(runPath, runId, file.originalname, file.buffer)
-    await appendAuditEvent(runPath, 'upload.image', {
+    const attachment = await saveAttachment(runPath, runId, file.originalname, file.buffer, file.mimetype)
+    await appendAuditEvent(runPath, 'upload.attachment', {
       originalName: file.originalname,
       mimeType: file.mimetype,
+      kind: attachment.kind,
       name: attachment.name,
       size: attachment.size,
     })
