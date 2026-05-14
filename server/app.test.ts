@@ -129,6 +129,23 @@ describe('Codex Pro Max multi-run API', () => {
     await expect(fs.readFile(path.join(runB, 'status.txt'), 'utf8')).resolves.toBe('WAITING_FOR_REVIEW\n')
   })
 
+  it('accepts instructions for a stopped run so it can resume', async () => {
+    const runA = getRunPath(rootPath, 'run-a')
+    await fs.mkdir(runA, { recursive: true })
+    await fs.writeFile(path.join(runA, 'status.txt'), 'STOPPED\n', 'utf8')
+    appHandle = createApp({ rootPath, startWatcher: false })
+
+    const response = await request(appHandle.app)
+      .post('/api/runs/run-a/action')
+      .send({ instruction: 'Resume after stop.' })
+      .expect(200)
+
+    expect(response.body.snapshot.status).toBe('INSTRUCTION_RECEIVED')
+    await expect(fs.readFile(path.join(runA, 'instruction.txt'), 'utf8')).resolves.toBe('Resume after stop.\n')
+    await expect(fs.readFile(path.join(runA, 'status.txt'), 'utf8')).resolves.toBe('INSTRUCTION_RECEIVED\n')
+    await expect(fs.readFile(path.join(runA, 'session.md'), 'utf8')).resolves.toContain('Resume after stop.')
+  })
+
   it('deletes only the selected run folder', async () => {
     const runA = getRunPath(rootPath, 'run-a')
     const runB = getRunPath(rootPath, 'run-b')

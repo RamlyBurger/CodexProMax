@@ -1066,6 +1066,43 @@ describe('App', () => {
     )
   })
 
+  it('sends instructions immediately when the selected run is stopped', async () => {
+    const fetchMock = vi.mocked(fetch)
+    const stoppedManager = managerFactory({
+      runs: [
+        {
+          ...managerFactory().runs[0],
+          status: 'STOPPED',
+          owner: 'agent',
+        },
+      ],
+    })
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse(stoppedManager))
+      .mockResolvedValueOnce(jsonResponse(snapshotFactory({ status: 'STOPPED' })))
+
+    render(<App />)
+    await getEventSource()
+
+    fireEvent.change(await screen.findByLabelText('Instruction'), {
+      target: { value: 'Resume this stopped session.' },
+    })
+    fireEvent.click(await screen.findByRole('button', { name: /send to codex/i }))
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/runs/run-a/action',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            instruction: 'Resume this stopped session.',
+          }),
+        }),
+      ),
+    )
+    expect(screen.queryByLabelText('Queued messages')).not.toBeInTheDocument()
+  })
+
   it('shows Codex loading below the latest user message and queues sends while working', async () => {
     const fetchMock = vi.mocked(fetch)
     render(<App />)

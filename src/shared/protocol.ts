@@ -32,7 +32,7 @@ export const STATUS_DETAILS: Record<
   },
   STOPPED: {
     owner: 'agent',
-    help: 'Terminal state for a run closed from the Codex Pro Max UI.',
+    help: 'Agent-owned paused state. The UI can send a new human instruction to resume the selected run.',
   },
   BLOCKED: {
     owner: 'agent',

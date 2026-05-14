@@ -772,7 +772,7 @@ function App() {
   }
 
   function shouldQueueInstruction() {
-    return status !== 'WAITING_FOR_REVIEW'
+    return !canReceiveInstruction(status)
       || selectedQueuedInstructions.length > 0
       || (selectedRunId !== null && Boolean(queuedSendInFlightRef.current[selectedRunId]))
   }
@@ -1135,7 +1135,7 @@ function App() {
 
     for (const run of managerSnapshot.runs) {
       const runStatus = run.runId === selectedRunId ? status : run.status
-      if (runStatus !== 'WAITING_FOR_REVIEW') {
+      if (!canReceiveInstruction(runStatus)) {
         if (blockedQueuedSendRef.current[run.runId]) {
           const nextBlockedItems = { ...blockedQueuedSendRef.current }
           delete nextBlockedItems[run.runId]
@@ -1173,10 +1173,10 @@ function App() {
     Boolean(selectedRunId)
     && instruction.trim().length > 0
     && !busy
-    && (status === 'WAITING_FOR_REVIEW' || aiWorking)
+    && (canReceiveInstruction(status) || aiWorking)
   const queueingCurrentInstruction =
     Boolean(selectedRunId)
-    && (status !== 'WAITING_FOR_REVIEW'
+    && (!canReceiveInstruction(status)
       || selectedQueuedInstructions.length > 0
       || (selectedRunId !== null && Boolean(queuedSendInFlightRef.current[selectedRunId])))
   const selectedTitle = selectedRun?.displayName ?? runSnapshot?.displayName ?? 'No run selected'
@@ -2401,6 +2401,10 @@ function ProfileAvatar({ type }: { type: 'bot' | 'user' }) {
 
 function isCodexWorking(status: ProtocolStatus) {
   return status === 'RUNNING' || status === 'INSTRUCTION_RECEIVED'
+}
+
+function canReceiveInstruction(status: ProtocolStatus) {
+  return status === 'WAITING_FOR_REVIEW' || status === 'STOPPED'
 }
 
 function isConversationThinkingRecord(record: CodexLiveRecord) {
