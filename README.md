@@ -10,6 +10,10 @@ I built this so I can chat with Codex directly from Codex Pro Max without interr
 
 That makes the workflow simple: review the answer, type the next instruction, and keep going. Have fun.
 
+<p align="center">
+  <img src="https://media.tenor.com/l6oja987EwIAAAAi/tkthao219-quby.gif" alt="Have fun sticker" width="120" />
+</p>
+
 ## What It Does
 
 <p align="center">
@@ -128,6 +132,10 @@ CodexProMax/
 ## Technical Reference
 
 ### System Architecture
+
+<p align="center">
+  <img src="./assets/readme/system-paper-figure.png" alt="Codex Pro Max paper-style system architecture figure" width="980" />
+</p>
 
 ```mermaid
 flowchart LR
@@ -249,3 +257,11 @@ npm run build
 Codex Pro Max is licensed under the MIT License. See [`LICENSE`](LICENSE).
 
 Use this project only in lawful, authorized, and responsible environments. Do not use it to abuse services, bypass access controls, violate platform terms, compromise systems, exfiltrate data, harass people, or automate activity you are not authorized to perform.
+
+<p align="center">
+  <img src="https://media.tenor.com/RsEw4m8_9m0AAAAi/rexx.gif" alt="Broke sticker" width="120" />
+</p>
+
+<p align="center">
+  Thank you for reading this boring README. If you'd like to chip in, just let me know!
+</p>
