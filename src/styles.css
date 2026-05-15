@@ -1570,6 +1570,17 @@ code,
   background: transparent;
 }
 
+.bot-avatar.profile-avatar {
+  width: 33px;
+  height: 44px;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.bot-avatar.profile-avatar img {
+  object-fit: contain;
+}
+
 .thinking-avatar {
   width: 44px;
   height: 58px;

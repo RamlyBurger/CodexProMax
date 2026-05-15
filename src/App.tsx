@@ -121,7 +121,8 @@ const USER_BUBBLE_TOP_ZONE_PX = 160
 const USER_BUBBLE_TOP_TOLERANCE_PX = 24
 const COMPOSER_TEXTAREA_MIN_HEIGHT_PX = 28
 const COMPOSER_TEXTAREA_MAX_HEIGHT_PX = 180
-const CODEX_PROFILE_IMAGE = '/codex-color.png'
+const CODEX_LOGO_IMAGE = '/codex-color.png'
+const CODEX_IDLE_IMAGE = '/codex-idle.webp'
 const CODEX_THINKING_IMAGE = '/codex-thinking.webp'
 const USER_PROFILE_IMAGE = '/burger.png'
 const LEFT_SIDEBAR_COLLAPSED_STORAGE_KEY = 'codex-pro-max:left-sidebar-collapsed'
@@ -1742,7 +1743,7 @@ function RunInbox({
       <div className="sidebar-inner">
         <div className="brand-area">
           <div className="brand-icon" aria-hidden="true">
-            <img src={CODEX_PROFILE_IMAGE} alt="" />
+            <img src={CODEX_LOGO_IMAGE} alt="" />
           </div>
           <div className="brand-text">Codex Pro Max</div>
         </div>
@@ -2446,7 +2447,7 @@ function ThinkingAvatar() {
 }
 
 function ProfileAvatar({ type }: { type: 'bot' | 'user' }) {
-  const src = type === 'bot' ? CODEX_PROFILE_IMAGE : USER_PROFILE_IMAGE
+  const src = type === 'bot' ? CODEX_IDLE_IMAGE : USER_PROFILE_IMAGE
   const label = type === 'bot' ? 'Codex' : 'You'
 
   return (
