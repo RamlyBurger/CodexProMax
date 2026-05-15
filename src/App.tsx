@@ -122,6 +122,7 @@ const USER_BUBBLE_TOP_TOLERANCE_PX = 24
 const COMPOSER_TEXTAREA_MIN_HEIGHT_PX = 28
 const COMPOSER_TEXTAREA_MAX_HEIGHT_PX = 180
 const CODEX_PROFILE_IMAGE = '/codex-color.png'
+const CODEX_THINKING_SPRITE_IMAGE = '/codex-thinking-sprite.png'
 const USER_PROFILE_IMAGE = '/burger.png'
 const LEFT_SIDEBAR_COLLAPSED_STORAGE_KEY = 'codex-pro-max:left-sidebar-collapsed'
 const RIGHT_SIDEBAR_COLLAPSED_STORAGE_KEY = 'codex-pro-max:right-sidebar-collapsed'
@@ -2285,7 +2286,7 @@ function AiLoadingMessage() {
       aria-label="Codex is working"
       data-testid="ai-loading-indicator"
     >
-      <ProfileAvatar type="bot" />
+      <ThinkingAvatar />
       <div className="message-content">
         <div className="ai-loading-bubble" aria-hidden="true">
           <span />
@@ -2412,7 +2413,7 @@ function AiThinkingMessage({
       aria-label="Codex thinking process"
       data-testid="ai-thinking-process"
     >
-      <ProfileAvatar type="bot" />
+      <ThinkingAvatar />
       <div className="message-content">
         <div className="label-row message-label-row">
           <span className="label-super ai-thinking-label" aria-label="Thinking">
@@ -2434,6 +2435,17 @@ function AiThinkingMessage({
         </div>
       </div>
     </article>
+  )
+}
+
+function ThinkingAvatar() {
+  return (
+    <div className="avatar thinking-avatar" aria-hidden="true">
+      <span
+        className="thinking-avatar-sprite"
+        style={{ backgroundImage: `url(${CODEX_THINKING_SPRITE_IMAGE})` }}
+      />
+    </div>
   )
 }
 
