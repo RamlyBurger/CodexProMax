@@ -4,6 +4,15 @@
   <img src="./assets/readme/banner.png" alt="Codex Pro Max banner" width="980" />
 </p>
 
+<p align="center">
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license" />
+  <img src="https://img.shields.io/badge/React-19-61dafb" alt="React 19" />
+  <img src="https://img.shields.io/badge/TypeScript-5.9-3178c6" alt="TypeScript 5.9" />
+  <img src="https://img.shields.io/badge/Vite-7.3-646cff" alt="Vite 7.3" />
+  <img src="https://img.shields.io/badge/local--first-file%20protocol-0f766e" alt="Local first file protocol" />
+  <img src="https://img.shields.io/badge/platform-Windows-0078d4" alt="Windows" />
+</p>
+
 Codex Pro Max helps you keep working with Codex without interrupting the same conversation.
 
 I built this so Codex can do the work, send its conclusion to Codex Pro Max, wait there for your next prompt, and then continue from the same Codex chat. You do not need to steer the original Codex thread with another message just to keep it moving, and you do not need to start a new conversation.
@@ -296,3 +305,11 @@ npm run build
 Codex Pro Max is licensed under the MIT License. See [`LICENSE`](LICENSE).
 
 Use this project only in lawful, authorized, and responsible environments. Do not use it to abuse services, bypass access controls, violate platform terms, compromise systems, exfiltrate data, harass people, or automate activity you are not authorized to perform.
+
+<p align="center">
+  <img src="https://media.tenor.com/l6oja987EwIAAAAi/tkthao219-quby.gif" alt="Quby waving" width="120" />
+</p>
+
+<p align="center">
+  Thank you for reading this boring README. If you'd like to chip in, just let me know!
+</p>
