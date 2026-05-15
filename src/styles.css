@@ -334,14 +334,14 @@ button:disabled {
   flex: 1 1 auto;
   column-gap: 10px;
   row-gap: 2px;
-  padding: 4px 5px 4px 6px;
+  padding: 3px 5px;
   border-radius: var(--radius-sm);
   text-align: left;
 }
 
 @media (min-width: 901px) {
   .left-sidebar:not(.collapsed) .run-select-button {
-    padding-left: 15px;
+    padding-left: 13px;
   }
 }
 
@@ -382,19 +382,24 @@ button:disabled {
 
 .run-status-thinking-avatar {
   width: 18px;
-  height: 24px;
+  height: 18px;
   display: block;
-  overflow: hidden;
+  position: relative;
+  overflow: visible;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
 }
 
 .run-status-thinking-avatar img {
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 31px;
+  height: 41px;
   display: block;
   object-fit: contain;
+  transform: translate(-50%, -50%);
 }
 
 .sidebar-profile-area {
@@ -1552,8 +1557,8 @@ code,
 }
 
 .thinking-avatar {
-  width: 33px;
-  height: 44px;
+  width: 44px;
+  height: 58px;
   overflow: hidden;
   border-radius: 0;
   background: transparent;
